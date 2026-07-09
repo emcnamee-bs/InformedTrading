@@ -8,6 +8,11 @@ export function dollarsToCents(s: string | null | undefined): number {
   return Math.round(n * 100);
 }
 
+/** Mid of a bid/ask pair (both already in cents). NaN-safe: either input NaN -> NaN. */
+export function midCents(bid: number, ask: number): number {
+  return Math.round((bid + ask) / 2);
+}
+
 /** Kalshi `_fp` fixed-point strings (e.g. volume_fp, count_fp) -> number. NaN-safe. */
 export function parseFp(s: string | null | undefined): number {
   if (s === null || s === undefined || s === "") return NaN;

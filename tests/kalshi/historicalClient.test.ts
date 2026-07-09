@@ -43,6 +43,36 @@ describe("HistoricalClient", () => {
     expect(candles[0]!.openInterest).toBe(300);
   });
 
+  it("falls back to the order-book mid when the last-trade price is null (quiet period)", async () => {
+    const fetchFn = fakeFetch({
+      "/trade-api/v2/series/S/markets/M/candlesticks": {
+        ticker: "M",
+        candlesticks: [
+          {
+            end_period_ts: 1000,
+            price: { open_dollars: null, high_dollars: null, low_dollars: null, close_dollars: null, mean_dollars: null },
+            yes_bid: { open_dollars: "0.81", high_dollars: "0.84", low_dollars: "0.80", close_dollars: "0.83" },
+            yes_ask: { open_dollars: "0.83", high_dollars: "0.86", low_dollars: "0.82", close_dollars: "0.85" },
+            volume_fp: "0",
+            open_interest_fp: "300",
+          },
+        ],
+      },
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+    );
+    const candles = await client.getCandles("S", "M", 0, 2000);
+    const price = candles[0]!.price;
+    expect(price.close).toBe(84);
+    expect(Number.isFinite(price.close)).toBe(true);
+    expect(price.open).toBe(82); // mid(81, 83)
+    expect(price.high).toBe(85); // mid(84, 86)
+    expect(price.low).toBe(81); // mid(80, 82)
+    expect(price.mean).toBeNull(); // mean_dollars null -> null (unchanged behavior)
+  });
+
   it("treats a null mean_dollars as null (not NaN)", async () => {
     const fetchFn = fakeFetch({
       "/trade-api/v2/series/S/markets/M/candlesticks": {
