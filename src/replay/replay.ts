@@ -1,4 +1,4 @@
-import { Candle, Trade, ResolvedMarket } from "../kalshi/types";
+import { Candle, Trade, ResolvedMarket, Side } from "../kalshi/types";
 import { buildFeatures } from "../detection/features";
 import { detectAnomaly } from "../detection/anomaly";
 import { realizedDrift } from "../expectancy/drift";
@@ -18,6 +18,14 @@ const MAX_HORIZON_DAYS = 31; // < ~1 month; enforces the §8.1 time gate inside 
 /** Trades whose createdTs falls within [startTs, endTs] (no lookahead). */
 function tradesInWindow(trades: Trade[], startTs: number, endTs: number): Trade[] {
   return trades.filter((t) => t.createdTs >= startTs && t.createdTs <= endTs);
+}
+
+/**
+ * Direction for the control leg: use CUSUM's direction when it fired; otherwise fall
+ * back to the sign of the window's net price move (first close -> last close).
+ */
+export function controlDirection(cusumDir: Side | null, firstClose: number, lastClose: number): Side {
+  return cusumDir ?? (lastClose >= firstClose ? "yes" : "no");
 }
 
 export function replayMarket(
@@ -50,14 +58,14 @@ export function replayMarket(
       if (Number.isFinite(drift)) obs.push({ stratumKey: key, kind: "anomaly", drift });
     } else if (idx % CONTROL_EVERY === 0) {
       // Direction-matched control: what a naive follow-the-local-move bet would have
-      // returned here. Uses CUSUM's direction if it has one (even unconfirmed/unfired
-      // it still reflects the window's regime), else falls back to the sign of the
-      // window's own price change. This is a like-for-like baseline against the
-      // anomaly strategy's own direction call -- an always-YES control would make
-      // "anomaly beats control" trivially true on markets that settle NO (final-review #4).
-      const controlDir =
-        features.cusumDir ??
-        (entry.price.close >= slice.window[0]!.price.close ? "yes" : "no");
+      // returned here. This is a like-for-like baseline against the anomaly strategy's
+      // own direction call -- an always-YES control would make "anomaly beats control"
+      // trivially true on markets that settle NO (final-review #4).
+      const controlDir = controlDirection(
+        features.cusumDir,
+        slice.window[0]!.price.close,
+        entry.price.close,
+      );
       const drift = realizedDrift(entry, controlDir, market.outcome);
       if (Number.isFinite(drift)) obs.push({ stratumKey: key, kind: "control", drift });
     }

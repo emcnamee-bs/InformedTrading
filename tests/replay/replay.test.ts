@@ -50,8 +50,9 @@ describe("replayMarket", () => {
   });
 
   it("direction-matches the control to the local move (down-moving window -> NO control bet)", () => {
-    // No CUSUM fire (small gradual decline), so control direction falls back to the
-    // sign of the window's price change: last close (44) < first close (48) -> "no".
+    // A steady decline: CUSUM actually fires here (its direction happens to agree with
+    // the price-sign fallback, "no"), so this test exercises the cusumDir branch, not
+    // the fallback -- see tests/replay/controlDirection.test.ts for direct fallback coverage.
     const baseline = Array.from({ length: 5 }, (_, i) => candle(i, 50, 5, 100));
     const decliningWindow = [candle(5, 48, 5, 100), candle(6, 46, 5, 100), candle(7, 44, 5, 100)];
     const candles = [...baseline, ...decliningWindow];
