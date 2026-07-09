@@ -1,5 +1,5 @@
 import { Config } from "../config";
-import { Candle, Trade, ResolvedMarket, Side } from "./types";
+import { Candle, Trade, ResolvedMarket, LiveMarket, Side } from "./types";
 import { RateGovernor } from "./rateGovernor";
 import { dollarsToCents, parseFp, isoToUnix, seriesFromEvent, midCents } from "./parse";
 
@@ -143,6 +143,42 @@ export class HistoricalClient {
           liquidityVolume: parseFp(m.volume_fp),
         };
         if (resolved.liquidityVolume >= minVolume) markets.push(resolved);
+      }
+      cursor = body.cursor || undefined;
+      if (maxMarkets !== undefined && markets.length >= maxMarkets) break;
+    } while (cursor);
+    return maxMarkets !== undefined ? markets.slice(0, maxMarkets) : markets;
+  }
+
+  /**
+   * Live-universe analog of `listResolvedMarkets`: scans currently-open markets (status=open)
+   * with the same volume-filter + early-stop-at-cap pagination logic, mapping the live order
+   * book (yes bid/ask) to cents for downstream anomaly detection.
+   */
+  async listOpenMarkets(opts?: { minVolume?: number; maxMarkets?: number }): Promise<LiveMarket[]> {
+    const minVolume = opts?.minVolume ?? 0;
+    const maxMarkets = opts?.maxMarkets;
+    const markets: LiveMarket[] = [];
+    let cursor: string | undefined;
+    do {
+      const body = await this.getJson("/markets", {
+        status: "open",
+        limit: 1000,
+        cursor,
+      });
+      for (const m of body.markets ?? []) {
+        const seriesTicker = seriesFromEvent(m.event_ticker ?? "");
+        const live: LiveMarket = {
+          marketTicker: m.ticker,
+          seriesTicker,
+          category: seriesTicker,
+          openTs: isoToUnix(m.open_time),
+          closeTs: isoToUnix(m.close_time),
+          liquidityVolume: parseFp(m.volume_fp),
+          yesBidCents: dollarsToCents(m.yes_bid_dollars),
+          yesAskCents: dollarsToCents(m.yes_ask_dollars),
+        };
+        if (live.liquidityVolume >= minVolume) markets.push(live);
       }
       cursor = body.cursor || undefined;
       if (maxMarkets !== undefined && markets.length >= maxMarkets) break;

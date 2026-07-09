@@ -37,3 +37,14 @@ export interface ResolvedMarket {
   closeTs: number;
   liquidityVolume: number; // total traded contracts (Kalshi's liquidity_dollars field is deprecated/dead)
 }
+
+export interface LiveMarket {
+  marketTicker: string;
+  seriesTicker: string;
+  category: string;
+  openTs: number;
+  closeTs: number;
+  liquidityVolume: number;
+  yesBidCents: number;
+  yesAskCents: number;
+}
