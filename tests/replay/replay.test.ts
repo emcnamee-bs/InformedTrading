@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { replayMarket, ReplayInput } from "../../src/replay/replay";
+import { realizedDrift } from "../../src/expectancy/drift";
 import { Candle, Trade, ResolvedMarket } from "../../src/kalshi/types";
 
 const candle = (ts: number, close: number, vol: number, oi: number): Candle => ({
@@ -46,6 +47,31 @@ describe("replayMarket", () => {
     const obs = replayMarket({ market, candles: flat, trades: [] }, 3, 5);
     expect(obs.every((o) => o.kind === "control")).toBe(true);
     expect(obs.length).toBeGreaterThan(0);
+  });
+
+  it("direction-matches the control to the local move (down-moving window -> NO control bet)", () => {
+    // No CUSUM fire (small gradual decline), so control direction falls back to the
+    // sign of the window's price change: last close (44) < first close (48) -> "no".
+    const baseline = Array.from({ length: 5 }, (_, i) => candle(i, 50, 5, 100));
+    const decliningWindow = [candle(5, 48, 5, 100), candle(6, 46, 5, 100), candle(7, 44, 5, 100)];
+    const candles = [...baseline, ...decliningWindow];
+    const market: ResolvedMarket = {
+      marketTicker: "M", seriesTicker: "S", category: "Sports",
+      outcome: "no", openTs: 0, closeTs: 8, liquidityVolume: 10_000,
+    };
+    const obs = replayMarket({ market, candles, trades: [] }, 3, 5);
+    expect(obs).toHaveLength(1);
+    const control = obs[0]!;
+    expect(control.kind).toBe("control");
+    const entry = decliningWindow[decliningWindow.length - 1]!;
+    const expectedNoDrift = realizedDrift(entry, "no", market.outcome);
+    const wouldBeYesDrift = realizedDrift(entry, "yes", market.outcome);
+    // Sanity: a NO bet on a market that settles NO is profitable; an always-YES
+    // bet on the same market is not -> the two are clearly distinguishable.
+    expect(expectedNoDrift).toBeGreaterThan(0);
+    expect(wouldBeYesDrift).toBeLessThan(0);
+    expect(control.drift).toBeCloseTo(expectedNoDrift, 10);
+    expect(control.drift).not.toBeCloseTo(wouldBeYesDrift, 2);
   });
 
   it("excludes observations whose resolution is more than ~1 month out", () => {

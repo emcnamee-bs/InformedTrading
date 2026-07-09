@@ -1,4 +1,4 @@
-import { meanCI95 } from "../math/stats";
+import { meanCI95, stdErr } from "../math/stats";
 
 export interface Observation {
   stratumKey: string;
@@ -13,6 +13,7 @@ export interface StratumStat {
   meanDrift: number;
   lo: number;
   hi: number;
+  stdErr: number;
 }
 
 export function aggregate(obs: Observation[]): StratumStat[] {
@@ -30,7 +31,15 @@ export function aggregate(obs: Observation[]): StratumStat[] {
     // can't poison the whole stratum's mean/CI (final-review #6).
     const drifts = arr.map((o) => o.drift).filter((d) => Number.isFinite(d));
     const ci = meanCI95(drifts);
-    stats.push({ stratumKey, kind, n: ci.n, meanDrift: ci.mean, lo: ci.lo, hi: ci.hi });
+    stats.push({
+      stratumKey,
+      kind,
+      n: ci.n,
+      meanDrift: ci.mean,
+      lo: ci.lo,
+      hi: ci.hi,
+      stdErr: stdErr(drifts),
+    });
   }
   return stats;
 }

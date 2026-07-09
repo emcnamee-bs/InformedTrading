@@ -29,8 +29,11 @@ describe("aggregate", () => {
     const anom = stats.find((s) => s.kind === "anomaly")!;
     expect(anom.n).toBe(2);
     expect(anom.meanDrift).toBeCloseTo(0.15, 6);
+    expect(Number.isFinite(anom.stdErr)).toBe(true);
+    expect(anom.stdErr).toBeGreaterThan(0);
     const ctrl = stats.find((s) => s.kind === "control")!;
     expect(ctrl.n).toBe(1);
+    expect(ctrl.stdErr).toBe(0); // n<2 -> stdErr floors to 0
   });
 
   it("excludes non-finite drift values so a stratum's stats stay finite", () => {
@@ -46,6 +49,7 @@ describe("aggregate", () => {
     expect(Number.isFinite(anom.meanDrift)).toBe(true);
     expect(Number.isFinite(anom.lo)).toBe(true);
     expect(Number.isFinite(anom.hi)).toBe(true);
+    expect(Number.isFinite(anom.stdErr)).toBe(true);
     expect(anom.meanDrift).toBeCloseTo(0.2, 6);
   });
 });

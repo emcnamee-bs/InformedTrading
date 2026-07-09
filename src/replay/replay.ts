@@ -49,8 +49,16 @@ export function replayMarket(
       // record it (aggregate() also filters non-finite drifts as the required safety net).
       if (Number.isFinite(drift)) obs.push({ stratumKey: key, kind: "anomaly", drift });
     } else if (idx % CONTROL_EVERY === 0) {
-      // control: what a naive YES-follow would have returned here
-      const drift = realizedDrift(entry, "yes", market.outcome);
+      // Direction-matched control: what a naive follow-the-local-move bet would have
+      // returned here. Uses CUSUM's direction if it has one (even unconfirmed/unfired
+      // it still reflects the window's regime), else falls back to the sign of the
+      // window's own price change. This is a like-for-like baseline against the
+      // anomaly strategy's own direction call -- an always-YES control would make
+      // "anomaly beats control" trivially true on markets that settle NO (final-review #4).
+      const controlDir =
+        features.cusumDir ??
+        (entry.price.close >= slice.window[0]!.price.close ? "yes" : "no");
+      const drift = realizedDrift(entry, controlDir, market.outcome);
       if (Number.isFinite(drift)) obs.push({ stratumKey: key, kind: "control", drift });
     }
   });
