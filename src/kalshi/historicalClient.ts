@@ -1,6 +1,7 @@
 import { Config } from "../config";
 import { Candle, Trade, ResolvedMarket, Side } from "./types";
 import { RateGovernor } from "./rateGovernor";
+import { dollarsToCents, parseFp, isoToUnix, seriesFromEvent } from "./parse";
 
 type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>;
 
@@ -13,50 +14,111 @@ export class HistoricalClient {
     this.gov = new RateGovernor(cfg.requestsPerSecond);
   }
 
-  private async getJson(path: string): Promise<any> {
+  private async getJson(path: string, params: Record<string, string | number | undefined>): Promise<any> {
     await this.gov.acquire();
-    const res = await this.fetchFn(`${this.cfg.kalshiBaseUrl}${path}`);
+    const qs = Object.entries(params)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .join("&");
+    const url = `${this.cfg.kalshiBaseUrl}${path}${qs ? `?${qs}` : ""}`;
+    const res = await this.fetchFn(url);
     if (!res.ok) throw new Error(`Kalshi ${path} -> HTTP ${res.status}`);
     return res.json();
   }
 
-  async getCandles(seriesTicker: string, marketTicker: string): Promise<Candle[]> {
-    const body = await this.getJson(`/series/${seriesTicker}/markets/${marketTicker}/candlesticks`);
+  /** period_interval (minutes) defaults to 60 (hourly) — tractable for a retrospective sweep; tunable gate param. */
+  async getCandles(
+    seriesTicker: string,
+    marketTicker: string,
+    startTs: number,
+    endTs: number,
+    periodInterval: 1 | 60 | 1440 = 60,
+  ): Promise<Candle[]> {
+    const body = await this.getJson(`/series/${seriesTicker}/markets/${marketTicker}/candlesticks`, {
+      start_ts: startTs,
+      end_ts: endTs,
+      period_interval: periodInterval,
+    });
     return (body.candlesticks ?? []).map((c: any): Candle => ({
       marketTicker,
       seriesTicker,
       endPeriodTs: c.end_period_ts,
-      periodMinutes: c.period_minutes,
-      price: c.price,
-      yesBid: c.yes_bid,
-      yesAsk: c.yes_ask,
-      volume: c.volume,
-      openInterest: c.open_interest,
+      periodMinutes: periodInterval,
+      price: {
+        open: dollarsToCents(c.price.open_dollars),
+        high: dollarsToCents(c.price.high_dollars),
+        low: dollarsToCents(c.price.low_dollars),
+        close: dollarsToCents(c.price.close_dollars),
+        mean: c.price.mean_dollars == null ? null : dollarsToCents(c.price.mean_dollars),
+      },
+      yesBid: {
+        open: dollarsToCents(c.yes_bid.open_dollars),
+        high: dollarsToCents(c.yes_bid.high_dollars),
+        low: dollarsToCents(c.yes_bid.low_dollars),
+        close: dollarsToCents(c.yes_bid.close_dollars),
+      },
+      yesAsk: {
+        open: dollarsToCents(c.yes_ask.open_dollars),
+        high: dollarsToCents(c.yes_ask.high_dollars),
+        low: dollarsToCents(c.yes_ask.low_dollars),
+        close: dollarsToCents(c.yes_ask.close_dollars),
+      },
+      volume: parseFp(c.volume_fp),
+      openInterest: parseFp(c.open_interest_fp),
     }));
   }
 
-  async getTrades(marketTicker: string): Promise<Trade[]> {
-    const body = await this.getJson(`/markets/trades?ticker=${marketTicker}`);
-    return (body.trades ?? []).map((t: any): Trade => ({
-      tradeId: t.trade_id,
-      ticker: marketTicker,
-      yesPriceCents: t.yes_price,
-      count: t.count,
-      takerSide: t.taker_side as Side,
-      createdTs: t.created_time_ts ?? Math.floor(new Date(t.created_time).getTime() / 1000),
-    }));
+  async getTrades(marketTicker: string, minTs?: number, maxTs?: number): Promise<Trade[]> {
+    const trades: Trade[] = [];
+    let cursor: string | undefined;
+    do {
+      const body = await this.getJson("/markets/trades", {
+        ticker: marketTicker,
+        min_ts: minTs,
+        max_ts: maxTs,
+        limit: 1000,
+        cursor,
+      });
+      for (const t of body.trades ?? []) {
+        trades.push({
+          tradeId: t.trade_id,
+          ticker: marketTicker,
+          yesPriceCents: dollarsToCents(t.yes_price_dollars),
+          count: parseFp(t.count_fp),
+          takerSide: t.taker_outcome_side as Side,
+          createdTs: isoToUnix(t.created_time),
+        });
+      }
+      cursor = body.cursor || undefined;
+    } while (cursor);
+    return trades;
   }
 
   async listResolvedMarkets(startTs: number, endTs: number): Promise<ResolvedMarket[]> {
-    const body = await this.getJson(`/markets?status=settled&min_close_ts=${startTs}&max_close_ts=${endTs}`);
-    return (body.markets ?? []).map((m: any): ResolvedMarket => ({
-      marketTicker: m.ticker,
-      seriesTicker: m.event_ticker ?? m.series_ticker,
-      category: m.category ?? "Unknown",
-      outcome: (m.result === "yes" ? "yes" : "no") as Side,
-      openTs: m.open_time_ts ?? 0,
-      closeTs: m.close_time_ts ?? 0,
-      liquidityCents: m.liquidity ?? 0,
-    }));
+    const markets: ResolvedMarket[] = [];
+    let cursor: string | undefined;
+    do {
+      const body = await this.getJson("/markets", {
+        status: "settled",
+        min_close_ts: startTs,
+        max_close_ts: endTs,
+        limit: 1000,
+        cursor,
+      });
+      for (const m of body.markets ?? []) {
+        const seriesTicker = seriesFromEvent(m.event_ticker);
+        markets.push({
+          marketTicker: m.ticker,
+          seriesTicker,
+          category: seriesTicker,
+          outcome: (m.result === "yes" ? "yes" : "no") as Side,
+          openTs: isoToUnix(m.open_time),
+          closeTs: isoToUnix(m.close_time),
+          liquidityVolume: parseFp(m.volume_fp),
+        });
+      }
+      cursor = body.cursor || undefined;
+    } while (cursor);
+    return markets;
   }
 }

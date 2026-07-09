@@ -42,7 +42,7 @@ async function main() {
   for (const m of markets) {
     let candles = readCache<Candle>(cfg.cacheDir, `candles_${m.marketTicker}`);
     if (!candles) {
-      candles = await client.getCandles(m.seriesTicker, m.marketTicker);
+      candles = await client.getCandles(m.seriesTicker, m.marketTicker, m.openTs, m.closeTs);
       writeCache(cfg.cacheDir, `candles_${m.marketTicker}`, candles);
     }
     let trades = readCache<Trade>(cfg.cacheDir, `trades_${m.marketTicker}`);

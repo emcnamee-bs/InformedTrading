@@ -4,15 +4,15 @@ import { aggregate, Observation } from "../../src/expectancy/strata";
 import { ResolvedMarket } from "../../src/kalshi/types";
 
 describe("stratum keys", () => {
-  it("bands by liquidity", () => {
-    expect(liquidityBand(1000)).toBe("thin");
-    expect(liquidityBand(100_000)).toBe("mid");
-    expect(liquidityBand(9_000_000)).toBe("deep");
+  it("bands by traded volume", () => {
+    expect(liquidityBand(500)).toBe("thin");
+    expect(liquidityBand(5_000)).toBe("mid");
+    expect(liquidityBand(50_000)).toBe("deep");
   });
   it("builds a category|band key", () => {
     const m: ResolvedMarket = {
       marketTicker: "K", seriesTicker: "S", category: "Politics",
-      outcome: "yes", openTs: 0, closeTs: 1, liquidityCents: 100_000,
+      outcome: "yes", openTs: 0, closeTs: 1, liquidityVolume: 5_000,
     };
     expect(stratumKey(m)).toBe("Politics|mid");
   });

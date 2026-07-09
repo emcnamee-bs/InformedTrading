@@ -26,7 +26,7 @@ describe("replayMarket", () => {
     ]);
     const market: ResolvedMarket = {
       marketTicker: "M", seriesTicker: "S", category: "Politics",
-      outcome: "yes", openTs: 0, closeTs: 11, liquidityCents: 100_000,
+      outcome: "yes", openTs: 0, closeTs: 11, liquidityVolume: 5_000,
     };
     const input: ReplayInput = { market, candles, trades };
     const obs = replayMarket(input, 3, 5);
@@ -41,7 +41,7 @@ describe("replayMarket", () => {
     const flat = Array.from({ length: 20 }, (_, i) => candle(i, 50, 5, 100));
     const market: ResolvedMarket = {
       marketTicker: "M", seriesTicker: "S", category: "Sports",
-      outcome: "no", openTs: 0, closeTs: 21, liquidityCents: 10_000,
+      outcome: "no", openTs: 0, closeTs: 21, liquidityVolume: 10_000,
     };
     const obs = replayMarket({ market, candles: flat, trades: [] }, 3, 5);
     expect(obs.every((o) => o.kind === "control")).toBe(true);
@@ -57,7 +57,7 @@ describe("replayMarket", () => {
     }));
     const market: ResolvedMarket = {
       marketTicker: "M", seriesTicker: "S", category: "Politics",
-      outcome: "yes", openTs: 0, closeTs: 40 * 86400, liquidityCents: 100_000,
+      outcome: "yes", openTs: 0, closeTs: 40 * 86400, liquidityVolume: 100_000,
     };
     // Resolution ~40 days after entry (> 31) -> every window skipped.
     expect(replayMarket({ market, candles: [...flat, ...surge], trades }, 3, 5)).toHaveLength(0);

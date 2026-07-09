@@ -35,5 +35,5 @@ export interface ResolvedMarket {
   outcome: Side; // "yes" if settled YES, else "no"
   openTs: number;
   closeTs: number;
-  liquidityCents: number; // Kalshi liquidity metric (proxy)
+  liquidityVolume: number; // total traded contracts (Kalshi's liquidity_dollars field is deprecated/dead)
 }
