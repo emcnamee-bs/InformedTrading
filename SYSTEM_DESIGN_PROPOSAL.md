@@ -60,6 +60,16 @@ Insider trading on prediction markets is documented, not hypothetical: a US Army
 
 **How v0.2 uses this evidence (important caveat).** ForesightFlow measures P(leakage | *known* insider) — a conditional computed on episodes already labeled as containing an insider. That is the **reverse** of the operational quantity (P(favorable drift | anomaly we detected)), and it says nothing about the base rate of true episodes among the anomalies we'll actually flag. So this evidence is treated as a **prior/motivation** — it justifies believing exploitable drift *might* exist and tells the scanner where to look — **not** as a measurement of our edge. Our edge is whatever the resolved-outcome ledger says it is (§10). The core economic trade-off remains: by the time flow is detectable, part of the move has happened; we are trying to harvest the *remainder* (detection→resolution) — and in v0.2 that remainder is **measured directly** (§8, resolves #9), not assumed.
 
+### 1.4 Operating model (v1) — attended runs from a MacBook
+
+v1 is **not** a 24/7 cloud service. It runs from the operator's **MacBook for bounded, attended (or semi-attended) periods**, matching the phased rollout (§10). While running, the loop is:
+
+1. **Scan.** The bot scans Kalshi markets for price/volume signatures consistent with informed trading (the detection engine, §5), narrowed to the plausible universe by the scanner (§7).
+2. **Explain-away.** For each flagged move, the investigator (§6) checks the web, official sources, and X for **readily-available public information that would explain the move**. If a public catalyst is found, the move is `EXPLAINED` and no bet is placed.
+3. **Decide & bet.** When no public explanation is found *and* the move's stratum carries measured positive post-fee edge (the empirical framing, §0/§10), the AI places a bet in the flow direction — subject to all §8 gates (≥ 5% net-of-fee expected return, resolution ≤ 1 month, liquidity/exposure caps).
+
+This "run it from my laptop for a while" model is deliberate for v1: it keeps operating cost near zero (§11), keeps a human within arm's reach of the kill switch (§8.4), and fits the ≤ $1/alert X budget (§6, §11). Always-on hosting is a later concern, out of v1 scope. *(Honesty note, per §0: "no public explanation left" is a gate/feature, not proof of an insider — the bet fires on the stratum's measured edge, not on an assertion about who traded.)*
+
 ---
 
 ## 2. High-level architecture
