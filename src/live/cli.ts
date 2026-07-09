@@ -4,6 +4,7 @@ import { HistoricalClient } from "../kalshi/historicalClient";
 import { AuthedClient } from "../kalshi/orderClient";
 import { planProbe, executeProbe, ProbeCandidate } from "./probe";
 import { Investigator, Investigation } from "./investigator";
+import { ClaudeInvestigator } from "./claudeInvestigator";
 
 export interface CliArgs {
   minVolume: number;
@@ -123,6 +124,15 @@ export const placeholderInvestigator: Investigator = {
   },
 };
 
+/**
+ * Picks the real Claude-backed investigator when ANTHROPIC_API_KEY is present (call
+ * `loadDotEnv()` first so a key set in `.env` is honored), else falls back to the placeholder --
+ * this keeps the dry-run-without-key path working exactly as before Task 5.
+ */
+export function selectInvestigator(env: NodeJS.ProcessEnv = process.env): Investigator {
+  return env.ANTHROPIC_API_KEY?.trim() ? new ClaudeInvestigator() : placeholderInvestigator;
+}
+
 function renderPlan(plan: ProbeCandidate[]): number {
   if (plan.length === 0) {
     console.log("No viable, unexplained candidates found.");
@@ -167,7 +177,7 @@ async function main() {
       getCandles: (seriesTicker, marketTicker, startTs, endTs, periodInterval) =>
         client.getCandles(seriesTicker, marketTicker, startTs, endTs, periodInterval),
       getTrades: (marketTicker, minTs, maxTs) => client.getTrades(marketTicker, minTs, maxTs),
-      investigator: placeholderInvestigator,
+      investigator: selectInvestigator(),
       nowTs,
     },
     {
