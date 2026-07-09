@@ -1,7 +1,7 @@
 # System Design Proposal — Insider-Flow Follower for Kalshi
 
-**Version:** 0.2 (revised after fresh-review brainstorm, 2026-07-09)
-**Date:** 2026-07-04 (v0.1) · 2026-07-09 (v0.2)
+**Version:** 0.3 (Phase-1 as-built sync, 2026-07-09)
+**Date:** 2026-07-04 (v0.1) · 2026-07-09 (v0.2, v0.3)
 **Author:** Claude (for Eamon)
 **Stack:** TypeScript / Node.js
 **Capital assumption:** $1k–$10k live bankroll
@@ -31,6 +31,25 @@ v0.2 **stops trying to identify insiders.** The testable edge becomes:
 - The certainty 0–5 becomes a **predicted post-fee-drift score** with weights *calibrated on outcomes*, validated monotone in realized drift (§6.2).
 - Validation is a **cheap→expensive falsification ladder with kill-gates**: retrospective for the math signal, forward paper for the investigator's marginal lift (§10, resolves #7).
 - Manipulation defense rides on the reframe (manipulation-heavy strata fail the positive-drift bar) plus size caps + a non-stationarity auto-suspend; **never-fade is kept but reframed as *selective abstention*** (§8, §12, resolves #5).
+
+---
+
+## 0.1 Implementation status & as-built deltas (v0.3)
+
+**What is built (Phase 1 — the retrospective kill-gate only):** a batch tool that replays resolved Kalshi markets and emits a **PASS / KILL / INCONCLUSIVE** verdict. Code in `src/` (kalshi data layer, math detectors, detection, expectancy, replay/verdict), 88 tests, run via `npm run replay`. Repo `github.com/emcnamee-bs/InformedTrading`, branch `phase1-kill-gate`, **draft PR #1**. **88/88 tests, `tsc --noEmit` clean, data layer verified against live Kalshi.**
+
+**What is NOT built yet (still design-only):** the AI explain-away investigator (§6), the market scanner / insider-proneness rubric (§7), the betting engine (§8), position manager, Postgres/TimescaleDB (Phase 1 uses a JSONL file cache — no DB), the dashboard, forward paper-logging (Phase 2), and all live trading (Phase 3). **Phase 2/3 are gated on the Phase-1 gate PASSing on real markets.**
+
+**As-built deltas from the vision below — these SUPERSEDE the inline text in §3, §5, §7, §8, §10 where they differ:**
+- **Strata = `series_ticker × volume band`, not `category × liquidity band`.** The live `/markets` object has no `category` and its `liquidity_dollars` is deprecated ("0.0000"), so we derive the series from `event_ticker` (prefix before the first `-`) and band by traded `volume_fp` (thin <1k, mid <10k, else deep — first-pass, tunable). Partial-pooling calibration (#10) deferred to Phase 2.
+- **Control baseline is direction-matched**, not always-YES: at non-anomaly windows the control bets the local move direction (CUSUM dir if it fired, else the sign of the window's price change), so "anomaly beats control" measures real incremental edge.
+- **Multiple-comparisons correction = one-sided Bonferroni** over the decidable-stratum family (`invNormCDF`; the verdict reports `strataTested`), so a single lucky stratum can't flip the run to PASS.
+- **Live Kalshi data-layer facts (verified vs docs.kalshi.com):** candlesticks REQUIRE `start_ts`/`end_ts`/`period_interval` (1|60|1440; default 60); prices arrive as `*_dollars` strings → ×100 to cents; sizes are `*_fp` strings; trades use `taker_outcome_side` (`taker_side` deprecated); `/markets` and `/markets/trades` paginate via `cursor`; `close_time` is ISO → unix.
+- **Mid-price fallback:** no-trade candle periods return a null last-trade price, so the price series falls back to the order-book mid `(yesBid+yesAsk)/2` (keeps the detector series continuous; realized drift still uses bid/ask).
+- **Horizon filter lives in the replay:** an observation is recorded only if the market resolves within **31 days** of entry (enforces the §8.1 time gate). Return bar stays **≥ 5% net-of-fee**.
+- **Synthetic data is unit-test-only**; all edge evidence comes from real resolved markets (§10).
+
+*(All Phase-1 build decisions are also logged in `.superpowers/sdd/progress.md`.)*
 
 ---
 
@@ -145,7 +164,7 @@ interface Candle {
 
 ### 3.2 Individual trades (tape)
 
-For markets on the active watchlist we also pull the trade tape (`GET /markets/trades`, verified against the live docs): `{trade_id, ticker, yes_price_dollars, no_price_dollars, count_fp, taker_side, taker_book_side, created_time}`. `taker_side` (yes/no) gives us signed order flow without needing a trade-classification algorithm — a luxury equity-market researchers don't have, and it makes VPIN/imbalance calculations exact rather than estimated. *(Caveat, #18: takers include noise/liquidity-demanding traders too, so signed taker flow is a direction hint, not proof of informed direction — it earns its weight only by measured drift-lift, §5.4.)*
+For markets on the active watchlist we also pull the trade tape (`GET /markets/trades`, verified against the live docs): `{trade_id, ticker, yes_price_dollars, no_price_dollars, count_fp, taker_side, taker_book_side, created_time}`. The signed taker side gives us signed order flow without needing a trade-classification algorithm — a luxury equity-market researchers don't have, and it makes VPIN/imbalance calculations exact rather than estimated. *(As-built §0.1: the live field is `taker_outcome_side`; `taker_side` is deprecated.)* *(Caveat, #18: takers include noise/liquidity-demanding traders too, so signed taker flow is a direction hint, not proof of informed direction — it earns its weight only by measured drift-lift, §5.4.)*
 
 ### 3.3 Supporting tables
 
