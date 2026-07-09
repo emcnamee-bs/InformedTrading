@@ -31,9 +31,9 @@ describe("HistoricalClient", () => {
     );
     const candles = await client.getCandles("S", "M");
     expect(candles).toHaveLength(1);
-    expect(candles[0].price.close).toBe(54);
-    expect(candles[0].yesAsk.close).toBe(55);
-    expect(candles[0].volume).toBe(42);
-    expect(candles[0].openInterest).toBe(300);
+    expect(candles[0]!.price.close).toBe(54);
+    expect(candles[0]!.yesAsk.close).toBe(55);
+    expect(candles[0]!.volume).toBe(42);
+    expect(candles[0]!.openInterest).toBe(300);
   });
 });
