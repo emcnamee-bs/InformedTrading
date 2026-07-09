@@ -1,0 +1,209 @@
+import { readFileSync, existsSync } from "node:fs";
+import { loadConfig } from "../config";
+import { HistoricalClient } from "../kalshi/historicalClient";
+import { AuthedClient } from "../kalshi/orderClient";
+import { planProbe, executeProbe, ProbeCandidate } from "./probe";
+import { Investigator, Investigation } from "./investigator";
+
+export interface CliArgs {
+  minVolume: number;
+  maxMarkets: number;
+  period: 1 | 60 | 1440;
+  maxBets: number;
+  live: boolean;
+  confirm: boolean;
+}
+
+const USAGE =
+  "usage: npm run probe -- [--min-volume V] [--max-markets N] [--period 1|60|1440] " +
+  "[--max-bets N] [--live --confirm]";
+
+export function parseArgs(argv: string[]): CliArgs {
+  const get = (flag: string) => {
+    const i = argv.indexOf(flag);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+
+  const minVolumeRaw = get("--min-volume");
+  const minVolume = minVolumeRaw !== undefined ? Number(minVolumeRaw) : 1000;
+  if (!Number.isFinite(minVolume) || minVolume < 0) {
+    throw new Error(`--min-volume must be a non-negative number, got: ${minVolumeRaw}\n${USAGE}`);
+  }
+
+  const maxMarketsRaw = get("--max-markets");
+  const maxMarkets = maxMarketsRaw !== undefined ? Number(maxMarketsRaw) : 300;
+  if (!Number.isInteger(maxMarkets) || maxMarkets <= 0) {
+    throw new Error(`--max-markets must be a positive integer, got: ${maxMarketsRaw}\n${USAGE}`);
+  }
+
+  const periodRaw = get("--period");
+  const period = periodRaw !== undefined ? Number(periodRaw) : 60;
+  if (period !== 1 && period !== 60 && period !== 1440) {
+    throw new Error(`--period must be one of 1, 60, 1440, got: ${periodRaw}\n${USAGE}`);
+  }
+
+  const maxBetsRaw = get("--max-bets");
+  const maxBets = maxBetsRaw !== undefined ? Number(maxBetsRaw) : 10;
+  if (!Number.isInteger(maxBets) || maxBets <= 0) {
+    throw new Error(`--max-bets must be a positive integer, got: ${maxBetsRaw}\n${USAGE}`);
+  }
+
+  return {
+    minVolume,
+    maxMarkets,
+    period: period as 1 | 60 | 1440,
+    maxBets,
+    live: argv.includes("--live"),
+    confirm: argv.includes("--confirm"),
+  };
+}
+
+/**
+ * Minimal `.env` loader (no `dotenv` dependency, and no Node --env-file since this repo
+ * targets Node >=18). Never overrides a variable already present in process.env.
+ */
+function loadDotEnv(path = ".env"): void {
+  if (!existsSync(path)) return;
+  const content = readFileSync(path, "utf-8");
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    const value = line.slice(eq + 1).trim();
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+/**
+ * Loads trading credentials for --live --confirm from an already-populated env (call
+ * `loadDotEnv()` first to fold in `.env`). `.env` (see .env.example) holds KALSHI_API_KEY_ID
+ * directly and KALSHI_PRIVATE_KEY_PATH pointing at a PEM file kept OUTSIDE git. Errors clearly
+ * (and refuses to proceed) if either is missing/blank. Pure function of `env` (no disk I/O
+ * beyond reading the PEM file) so it's straightforward to unit test without touching the real
+ * `.env`/`process.env`.
+ */
+export function loadTradingCredentials(env: NodeJS.ProcessEnv = process.env): { keyId: string; pem: string } {
+  const keyId = env.KALSHI_API_KEY_ID?.trim();
+  if (!keyId) {
+    throw new Error(
+      "KALSHI_API_KEY_ID is missing or blank. Set it in .env (see .env.example) before using --live --confirm.",
+    );
+  }
+  const pemPath = env.KALSHI_PRIVATE_KEY_PATH?.trim();
+  if (!pemPath) {
+    throw new Error(
+      "KALSHI_PRIVATE_KEY_PATH is missing or blank. Set it in .env (see .env.example) before using --live --confirm.",
+    );
+  }
+  if (!existsSync(pemPath)) {
+    throw new Error(`KALSHI_PRIVATE_KEY_PATH points to a file that does not exist: ${pemPath}`);
+  }
+  const pem = readFileSync(pemPath, "utf-8").trim();
+  if (!pem) {
+    throw new Error(`Private key file at ${pemPath} is empty.`);
+  }
+  return { keyId, pem };
+}
+
+/**
+ * Placeholder investigator standing in for the real Claude-backed one (Task 5, built later per
+ * the plan's recommended sequence). Always returns AMBIGUOUS so `keepUnexplained` filters it
+ * out -- the dry-run pipeline runs end-to-end but never plans a bet until Task 5 wires in the
+ * real investigator (swap the `investigator` field in main() below).
+ */
+export const placeholderInvestigator: Investigator = {
+  async investigate(): Promise<Investigation> {
+    return {
+      verdict: "AMBIGUOUS",
+      rationale: "Placeholder investigator (Task 5 not yet wired in) -- no bets are planned.",
+      sources: [],
+    };
+  },
+};
+
+function renderPlan(plan: ProbeCandidate[]): number {
+  if (plan.length === 0) {
+    console.log("No viable, unexplained candidates found.");
+    return 0;
+  }
+  let total = 0;
+  for (const p of plan) {
+    const m = p.candidate.market;
+    total += p.order.costCents;
+    console.log(
+      `${m.marketTicker}  dir=${p.candidate.direction}  entry=${p.candidate.entryCents}c  ` +
+        `count=${p.order.count}  cost=${p.order.costCents}c  score=${p.candidate.anomalyScore.toFixed(3)}  ` +
+        `verdict=${p.investigation.verdict}`,
+    );
+    console.log(`    rationale: ${p.investigation.rationale}`);
+    console.log(`    sources: ${p.investigation.sources.join(", ") || "(none)"}`);
+  }
+  console.log(`\nTotal cost: ${total}c across ${plan.length} order(s).`);
+  return total;
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const cfg = loadConfig();
+  const nowTs = Math.floor(Date.now() / 1000);
+  const client = new HistoricalClient(cfg);
+
+  const willPlaceOrders = args.live && args.confirm;
+
+  console.error(
+    `Run config: minVolume=${args.minVolume} maxMarkets=${args.maxMarkets} period=${args.period}min ` +
+      `maxBets=${args.maxBets} mode=${willPlaceOrders ? "LIVE" : "DRY-RUN"}`,
+  );
+
+  const plan = await planProbe(
+    {
+      listOpenMarkets: (opts) => client.listOpenMarkets(opts),
+      getCandles: (seriesTicker, marketTicker, startTs, endTs, periodInterval) =>
+        client.getCandles(seriesTicker, marketTicker, startTs, endTs, periodInterval),
+      getTrades: (marketTicker, minTs, maxTs) => client.getTrades(marketTicker, minTs, maxTs),
+      investigator: placeholderInvestigator,
+      nowTs,
+    },
+    {
+      minVolume: args.minVolume,
+      maxMarkets: args.maxMarkets,
+      period: args.period,
+      maxBets: args.maxBets,
+    },
+  );
+
+  if (!willPlaceOrders) {
+    console.log("\n=== DRY-RUN -- no orders will be placed (use --live --confirm to place real orders) ===\n");
+    renderPlan(plan);
+    if (args.live || args.confirm) {
+      console.log(
+        `\nNote: both --live AND --confirm are required to place real orders; ` +
+          `only ${args.live ? "--live" : "--confirm"} was given.`,
+      );
+    }
+    return;
+  }
+
+  console.log("\n=== LIVE -- placing real orders ===\n");
+  renderPlan(plan);
+
+  loadDotEnv();
+  const { keyId, pem } = loadTradingCredentials();
+  const orderClient = new AuthedClient(cfg, keyId, pem);
+  const results = await executeProbe(orderClient, plan);
+
+  console.log("\n=== Order results ===");
+  for (const r of results) {
+    console.log(`${r.ticker}  clientOrderId=${r.clientOrderId}  orderId=${r.orderId}  status=${r.status}`);
+  }
+}
+
+// Only run when executed directly (not when imported, e.g. by tests).
+if (process.argv[1] && process.argv[1].endsWith("cli.ts")) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

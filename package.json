@@ -7,7 +7,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "replay": "tsx src/replay/cli.ts"
+    "replay": "tsx src/replay/cli.ts",
+    "probe": "tsx src/live/cli.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
