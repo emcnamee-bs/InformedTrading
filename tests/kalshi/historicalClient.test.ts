@@ -269,4 +269,57 @@ describe("HistoricalClient", () => {
     expect(calls).toBe(2);
     expect(markets.map((m) => m.marketTicker)).toEqual(["A", "B"]);
   });
+
+  it("early-stops paginating listResolvedMarkets once maxMarkets is reached", async () => {
+    let calls = 0;
+    const fetchFn = (async (url: string) => {
+      calls += 1;
+      const cursor = new URL(url).searchParams.get("cursor");
+      if (!cursor) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            markets: [
+              { ticker: "A", event_ticker: "EV-1", status: "settled", result: "yes", open_time: "1970-01-01T00:00:00Z", close_time: "1970-01-01T00:00:01Z", volume_fp: "1" },
+            ],
+            cursor: "page2",
+          }),
+        };
+      }
+      // page 2 should never be fetched once maxMarkets is satisfied by page 1
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ markets: [], cursor: "" }),
+      };
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+    );
+    const markets = await client.listResolvedMarkets(0, 100, { maxMarkets: 1 });
+    expect(markets).toHaveLength(1);
+    expect(markets[0]!.marketTicker).toBe("A");
+    expect(calls).toBe(1); // page 2 never fetched
+  });
+
+  it("filters listResolvedMarkets by minVolume, keeping only markets at/above the threshold", async () => {
+    const fetchFn = fakeFetch({
+      "/trade-api/v2/markets": {
+        markets: [
+          { ticker: "LOW", event_ticker: "EV-1", status: "settled", result: "yes", open_time: "1970-01-01T00:00:00Z", close_time: "1970-01-01T00:00:01Z", volume_fp: "50" },
+          { ticker: "HIGH", event_ticker: "EV-2", status: "settled", result: "no", open_time: "1970-01-01T00:00:00Z", close_time: "1970-01-01T00:00:01Z", volume_fp: "5000" },
+          { ticker: "EXACT", event_ticker: "EV-3", status: "settled", result: "yes", open_time: "1970-01-01T00:00:00Z", close_time: "1970-01-01T00:00:01Z", volume_fp: "1000" },
+        ],
+        cursor: "",
+      },
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+    );
+    const markets = await client.listResolvedMarkets(0, 100, { minVolume: 1000 });
+    expect(markets.map((m) => m.marketTicker)).toEqual(["HIGH", "EXACT"]);
+  });
 });

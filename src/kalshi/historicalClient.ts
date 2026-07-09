@@ -109,7 +109,18 @@ export class HistoricalClient {
     return trades;
   }
 
-  async listResolvedMarkets(startTs: number, endTs: number): Promise<ResolvedMarket[]> {
+  /**
+   * `minVolume`/`maxMarkets` make a real sweep tractable: they filter the settled-market
+   * universe by traded volume and stop paginating as soon as the cap is reached (no further
+   * pages fetched). Omitting both preserves the original full-crawl, no-filter behavior.
+   */
+  async listResolvedMarkets(
+    startTs: number,
+    endTs: number,
+    opts?: { minVolume?: number; maxMarkets?: number },
+  ): Promise<ResolvedMarket[]> {
+    const minVolume = opts?.minVolume ?? 0;
+    const maxMarkets = opts?.maxMarkets;
     const markets: ResolvedMarket[] = [];
     let cursor: string | undefined;
     do {
@@ -122,7 +133,7 @@ export class HistoricalClient {
       });
       for (const m of body.markets ?? []) {
         const seriesTicker = seriesFromEvent(m.event_ticker);
-        markets.push({
+        const resolved: ResolvedMarket = {
           marketTicker: m.ticker,
           seriesTicker,
           category: seriesTicker,
@@ -130,10 +141,12 @@ export class HistoricalClient {
           openTs: isoToUnix(m.open_time),
           closeTs: isoToUnix(m.close_time),
           liquidityVolume: parseFp(m.volume_fp),
-        });
+        };
+        if (resolved.liquidityVolume >= minVolume) markets.push(resolved);
       }
       cursor = body.cursor || undefined;
+      if (maxMarkets !== undefined && markets.length >= maxMarkets) break;
     } while (cursor);
-    return markets;
+    return maxMarkets !== undefined ? markets.slice(0, maxMarkets) : markets;
   }
 }

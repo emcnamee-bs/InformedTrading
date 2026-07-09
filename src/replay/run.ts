@@ -5,7 +5,13 @@ import { Observation } from "../expectancy/strata";
 
 /** The subset of HistoricalClient's surface runReplay depends on (kept minimal for testability). */
 export interface ReplayClient {
-  getCandles(seriesTicker: string, marketTicker: string, startTs: number, endTs: number): Promise<Candle[]>;
+  getCandles(
+    seriesTicker: string,
+    marketTicker: string,
+    startTs: number,
+    endTs: number,
+    periodInterval?: 1 | 60 | 1440,
+  ): Promise<Candle[]>;
   getTrades(marketTicker: string): Promise<Trade[]>;
 }
 
@@ -16,20 +22,25 @@ export interface RunReplayConfig {
 /**
  * Replays every market, accumulating observations. A single market's fetch/replay
  * failure is caught, logged, and skipped rather than aborting the whole run (final-review #7).
+ * `period` (candle bucket size in minutes) is threaded through to `getCandles`.
  */
 export async function runReplay(
   client: ReplayClient,
   markets: ResolvedMarket[],
   cfg: RunReplayConfig,
+  period: 1 | 60 | 1440 = 60,
 ): Promise<Observation[]> {
   const allObs: Observation[] = [];
   let skipped = 0;
+  const total = markets.length;
 
-  for (const m of markets) {
+  for (let i = 0; i < markets.length; i++) {
+    const m = markets[i]!;
+    console.error(`[${i + 1}/${total}] ${m.marketTicker}`);
     try {
       let candles = readCache<Candle>(cfg.cacheDir, `candles_${m.marketTicker}`);
       if (!candles) {
-        candles = await client.getCandles(m.seriesTicker, m.marketTicker, m.openTs, m.closeTs);
+        candles = await client.getCandles(m.seriesTicker, m.marketTicker, m.openTs, m.closeTs, period);
         writeCache(cfg.cacheDir, `candles_${m.marketTicker}`, candles);
       }
       let trades = readCache<Trade>(cfg.cacheDir, `trades_${m.marketTicker}`);

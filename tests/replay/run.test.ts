@@ -68,4 +68,52 @@ describe("runReplay", () => {
 
     errSpy.mockRestore();
   });
+
+  it("threads the given period through to getCandles, defaulting to 60 when omitted", async () => {
+    cacheDir = mkdtempSync(join(tmpdir(), "run-replay-test-"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const client: ReplayClient = {
+      getCandles: vi.fn(async () => flatCandles),
+      getTrades: vi.fn(async () => [] as Trade[]),
+    };
+
+    await runReplay(client, [market("M1")], { cacheDir });
+    expect(client.getCandles).toHaveBeenCalledWith("S", "M1", 0, 21, 60);
+
+    errSpy.mockRestore();
+  });
+
+  it("passes an explicit period through to getCandles", async () => {
+    cacheDir = mkdtempSync(join(tmpdir(), "run-replay-test-"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const client: ReplayClient = {
+      getCandles: vi.fn(async () => flatCandles),
+      getTrades: vi.fn(async () => [] as Trade[]),
+    };
+
+    await runReplay(client, [market("M1")], { cacheDir }, 1440);
+    expect(client.getCandles).toHaveBeenCalledWith("S", "M1", 0, 21, 1440);
+
+    errSpy.mockRestore();
+  });
+
+  it("prints [i/N] ticker progress to stderr for each market processed", async () => {
+    cacheDir = mkdtempSync(join(tmpdir(), "run-replay-test-"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const client: ReplayClient = {
+      getCandles: vi.fn(async () => flatCandles),
+      getTrades: vi.fn(async () => [] as Trade[]),
+    };
+
+    await runReplay(client, [market("M1"), market("M2")], { cacheDir });
+
+    const errorCalls = errSpy.mock.calls.map((c) => String(c[0]));
+    expect(errorCalls.some((m) => m.includes("[1/2]") && m.includes("M1"))).toBe(true);
+    expect(errorCalls.some((m) => m.includes("[2/2]") && m.includes("M2"))).toBe(true);
+
+    errSpy.mockRestore();
+  });
 });
