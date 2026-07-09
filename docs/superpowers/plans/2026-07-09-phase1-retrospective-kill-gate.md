@@ -15,6 +15,7 @@
 - **Prices:** YES price is in **cents, integer 1–99** (`Candle.price` etc.). All probability math runs on **log-odds** of `price/100`, never raw cents. (§5.1)
 - **Fees:** Kalshi per-contract fee = `ceil(0.07 · p · (1−p) · 100) / 100` dollars, `p = priceCents/100`. Peaks near 50¢. Verify the exact live schedule per series at build time; this formula is the Phase-1 model. (§8.1)
 - **No lookahead:** during replay a window's features may use only candles/trades at or before that window's timestamp. The resolution outcome is used **only** to compute realized drift after an observation is recorded, never as a feature. (§10)
+- **Horizon filter (< 1 month):** enforce the design's time gate (§8.1) inside Phase 1 — record a window's observation only when the market's resolution is within **31 days** of the entry candle's timestamp. Windows whose resolution is further out, or already past, are skipped. The return bar stays **≥ 5% net-of-fee** (`minDrift = 0.05`). (§7, §8.1)
 - **Abstain, don't guess:** a detector whose volume/history floor is unmet returns `null` (abstain), never a noisy number. (§5, #4)
 - **Selection-bias-free:** record observations for anomaly **and** control (non-anomaly) windows; the verdict compares the two. (§2, §10, #16)
 - **Synthetic data is unit-test-only** — never used to establish the edge. Edge evidence comes exclusively from real resolved markets. (§3.3, #7)
@@ -1429,7 +1430,7 @@ git commit -m "feat: Kalshi historical client + rate governor + JSONL cache"
 - Produces:
   - `slidingWindows<T extends { endPeriodTs?: number }>(candles: Candle[], size: number, baselineSize: number): { window: Candle[]; baseline: Candle[]; endTs: number }[]`
   - `ReplayInput = { market: ResolvedMarket; candles: Candle[]; trades: Trade[] }`
-  - `replayMarket(input: ReplayInput, windowSize?: number, baselineSize?: number): Observation[]` — emits one `anomaly` observation per anomaly window and one `control` observation per non-anomaly window (subsampled 1-in-`controlEvery`), each with `drift = realizedDrift(entryCandle, direction, outcome)`. No lookahead: features use only candles/trades with `endPeriodTs`/`createdTs` ≤ the window end; `outcome` used only for drift.
+  - `replayMarket(input: ReplayInput, windowSize?: number, baselineSize?: number, maxHorizonDays?: number): Observation[]` — emits one `anomaly` observation per anomaly window and one `control` observation per non-anomaly window (subsampled 1-in-`controlEvery`), each with `drift = realizedDrift(entryCandle, direction, outcome)`. **Horizon filter:** a window is skipped entirely unless the market's resolution (`market.closeTs`) is within `maxHorizonDays` (default 31) of the entry candle. No lookahead: features use only candles/trades with `endPeriodTs`/`createdTs` ≤ the window end; `outcome` used only for drift.
 
 - [ ] **Step 1: Write the failing test for `slidingWindows`**
 
@@ -1551,6 +1552,21 @@ describe("replayMarket", () => {
     expect(obs.every((o) => o.kind === "control")).toBe(true);
     expect(obs.length).toBeGreaterThan(0);
   });
+
+  it("excludes observations whose resolution is more than ~1 month out", () => {
+    const flat = Array.from({ length: 8 }, (_, i) => candle(i, 50, 5, 100));
+    const surge = [candle(8, 62, 80, 130), candle(9, 74, 80, 160), candle(10, 86, 80, 190)];
+    const trades: Trade[] = surge.map((c, i) => ({
+      tradeId: `t${i}`, ticker: "M", yesPriceCents: c.price.close,
+      count: 80, takerSide: "yes", createdTs: c.endPeriodTs,
+    }));
+    const market: ResolvedMarket = {
+      marketTicker: "M", seriesTicker: "S", category: "Politics",
+      outcome: "yes", openTs: 0, closeTs: 40 * 86400, liquidityCents: 100_000,
+    };
+    // Resolution ~40 days after entry (> 31) -> every window skipped.
+    expect(replayMarket({ market, candles: [...flat, ...surge], trades }, 3, 5)).toHaveLength(0);
+  });
 });
 ```
 
@@ -1577,6 +1593,7 @@ export interface ReplayInput {
 }
 
 const CONTROL_EVERY = 5; // subsample control windows to bound their count
+const MAX_HORIZON_DAYS = 31; // < ~1 month; enforces the §8.1 time gate inside the replay
 
 /** Trades whose createdTs falls within [startTs, endTs] (no lookahead). */
 function tradesInWindow(trades: Trade[], startTs: number, endTs: number): Trade[] {
@@ -1587,11 +1604,13 @@ export function replayMarket(
   input: ReplayInput,
   windowSize = 3,
   baselineSize = 5,
+  maxHorizonDays = MAX_HORIZON_DAYS,
 ): Observation[] {
   const { market, candles, trades } = input;
   const key = stratumKey(market);
   const slices = slidingWindows(candles, windowSize, baselineSize);
   const obs: Observation[] = [];
+  const maxHorizonSec = maxHorizonDays * 86400;
 
   slices.forEach((slice, idx) => {
     const startTs = slice.window[0]!.endPeriodTs;
@@ -1599,6 +1618,10 @@ export function replayMarket(
     const features = buildFeatures(slice.window, wt, slice.baseline);
     const { isAnomaly, direction } = detectAnomaly(features);
     const entry = slice.window[slice.window.length - 1]!;
+
+    // Horizon filter (< 1 month): only count markets resolving within the bettable window (§8.1).
+    const horizonSec = market.closeTs - entry.endPeriodTs;
+    if (horizonSec <= 0 || horizonSec > maxHorizonSec) return;
 
     if (isAnomaly && direction) {
       obs.push({
@@ -1881,6 +1904,7 @@ git commit -m "feat: kill-gate report + verdict + replay CLI"
 - Math-anomaly features on log-odds (CUSUM), order-flow, VPIN with floors → Tasks 3–7. ✅
 - Abstain-on-floor (null, not noise) → Tasks 5, 6, 7 (asserted in tests). ✅
 - No lookahead → Task 11 (`slidingWindows` baseline-precedes-window test; trades filtered by ts; outcome used only in drift). ✅
+- Horizon filter (< 1 month, enforces §8.1 time gate) → Task 11 (`maxHorizonDays=31`; far-resolution exclusion test). ✅
 - Realistic-entry, net-of-fee drift → Tasks 2, 8. ✅
 - Selection-bias-free (anomaly + control) → Tasks 11, 12. ✅
 - Stratum keys (category × liquidity band) → Task 9. ✅
@@ -1897,5 +1921,5 @@ git commit -m "feat: kill-gate report + verdict + replay CLI"
 ## Notes for the executor
 
 - **Run order matters for confidence, not correctness:** each task is independently testable, but Tasks 2→9 are pure functions (fast, no I/O), Task 10 adds injectable I/O, Tasks 11–12 wire it together. Implement in order.
-- **The verdict thresholds** (`minDrift=0.05`, `minSample=30`, `CONTROL_EVERY=5`, `liquidityBand` cutoffs, anomaly `tau`s) are first-pass values. They are *parameters of the gate, not of the edge* — do not tune them to manufacture a PASS. If the honest answer is KILL or INCONCLUSIVE, that is the deliverable (§10).
+- **The verdict thresholds** (`minDrift=0.05`, `minSample=30`, `CONTROL_EVERY=5`, `MAX_HORIZON_DAYS=31`, `liquidityBand` cutoffs, anomaly `tau`s) are first-pass values. They are *parameters of the gate, not of the edge* — do not tune them to manufacture a PASS. If the honest answer is KILL or INCONCLUSIVE, that is the deliverable (§10).
 - **Next plan after this:** if PASS, Phase 2 (forward paper-logging with the point-in-time investigator, the joint fitted drift model, and Postgres/Timescale). If KILL, the project stops here — as designed.
