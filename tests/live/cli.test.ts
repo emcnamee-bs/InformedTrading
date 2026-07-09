@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { parseArgs, loadTradingCredentials } from "../../src/live/cli";
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { parseArgs, loadTradingCredentials, loadDotEnv } from "../../src/live/cli";
 
 describe("parseArgs", () => {
   it("applies defaults when no flags are given", () => {
@@ -67,5 +70,43 @@ describe("loadTradingCredentials", () => {
     expect(() =>
       loadTradingCredentials({ KALSHI_API_KEY_ID: "abc-123", KALSHI_PRIVATE_KEY_PATH: "./definitely-not-here.pem" }),
     ).toThrow(/does not exist/);
+  });
+});
+
+describe("loadDotEnv", () => {
+  const written: string[] = [];
+
+  afterEach(() => {
+    for (const key of written.splice(0)) delete process.env[key];
+  });
+
+  it("sets a var from a .env file into process.env (regression: must run before loadConfig)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dotenv-test-"));
+    const envPath = join(dir, ".env");
+    writeFileSync(envPath, "KALSHI_BASE_URL=https://demo.example.test/trade-api/v2\n");
+    written.push("KALSHI_BASE_URL");
+
+    expect(process.env.KALSHI_BASE_URL).toBeUndefined();
+    loadDotEnv(envPath);
+    expect(process.env.KALSHI_BASE_URL).toBe("https://demo.example.test/trade-api/v2");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("never overrides a variable already present in process.env", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dotenv-test-"));
+    const envPath = join(dir, ".env");
+    writeFileSync(envPath, "KALSHI_BASE_URL=https://should-not-apply.test\n");
+    written.push("KALSHI_BASE_URL");
+    process.env.KALSHI_BASE_URL = "https://already-set.test";
+
+    loadDotEnv(envPath);
+    expect(process.env.KALSHI_BASE_URL).toBe("https://already-set.test");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("is a no-op when the file does not exist", () => {
+    expect(() => loadDotEnv(join(tmpdir(), "definitely-not-a-real-dotenv-file"))).not.toThrow();
   });
 });

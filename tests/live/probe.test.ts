@@ -187,26 +187,22 @@ describe("planProbe", () => {
     expect(plan.map((p) => p.candidate.market.marketTicker)).toEqual([unexplainedTicker]);
   });
 
-  it("never places any orders while planning: an order client's place spy sees zero calls", async () => {
+  // NOTE on "planning never places orders": this is a STRUCTURAL guarantee, not something a
+  // runtime spy could meaningfully falsify -- `ProbeDeps` (see src/live/probe.ts) has no
+  // order-client field at all, so `planProbe` has no way to reach an `OrderClient` even if it
+  // wanted to. Order placement only happens in `executeProbe`, whose spending/count caps are
+  // exercised by the "executeProbe" test suite below. What IS worth asserting here is that
+  // planning actually produces the expected plan.
+  it("produces the expected plan for a viable, unexplained candidate", async () => {
     const ticker = "MKT-PLAN-ONLY";
     const markets = [makeMarket(ticker)];
     const dataByTicker = new Map([[ticker, buildSurgeData(ticker, 1.0)]]);
     const deps = makeDeps(markets, dataByTicker, alwaysUnexplained());
 
-    const placeCalls: OrderRequest[] = [];
-    const spyOrderClient: OrderClient = {
-      getBalanceCents: async () => 100_000,
-      placeLimitBuy: async (o) => {
-        placeCalls.push(o);
-        return { orderId: "SHOULD-NOT-HAPPEN", status: "resting" };
-      },
-    };
-    void spyOrderClient; // never passed to planProbe -- structurally cannot place orders
-
     const plan = await planProbe(deps, baseOpts);
 
     expect(plan.length).toBeGreaterThan(0);
-    expect(placeCalls).toHaveLength(0);
+    expect(plan[0]!.candidate.market.marketTicker).toBe(ticker);
   });
 
   it("produces deterministic clientOrderIds (no randomness) across repeated runs with the same nowTs", async () => {

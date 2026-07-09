@@ -62,7 +62,7 @@ export function parseArgs(argv: string[]): CliArgs {
  * Minimal `.env` loader (no `dotenv` dependency, and no Node --env-file since this repo
  * targets Node >=18). Never overrides a variable already present in process.env.
  */
-function loadDotEnv(path = ".env"): void {
+export function loadDotEnv(path = ".env"): void {
   if (!existsSync(path)) return;
   const content = readFileSync(path, "utf-8");
   for (const rawLine of content.split("\n")) {
@@ -145,6 +145,10 @@ function renderPlan(plan: ProbeCandidate[]): number {
 }
 
 async function main() {
+  // Load .env BEFORE loadConfig() so KALSHI_BASE_URL / REQUESTS_PER_SECOND / CACHE_DIR set
+  // there are actually honored (both dry-run and --live). Unconditional: loadDotEnv() never
+  // overrides a variable already present in process.env, so this is safe either way.
+  loadDotEnv();
   const args = parseArgs(process.argv.slice(2));
   const cfg = loadConfig();
   const nowTs = Math.floor(Date.now() / 1000);
@@ -189,7 +193,6 @@ async function main() {
   console.log("\n=== LIVE -- placing real orders ===\n");
   renderPlan(plan);
 
-  loadDotEnv();
   const { keyId, pem } = loadTradingCredentials();
   const orderClient = new AuthedClient(cfg, keyId, pem);
   const results = await executeProbe(orderClient, plan);
