@@ -18,6 +18,7 @@ export const HARD_MAX_ORDER_COST_CENTS = 100;
  * degenerate entryCents > 100 case (never reached given viability's maxEntryCents <= 95).
  */
 export function sizeOrder(entryCents: number): { count: number; costCents: number } {
+  if (!Number.isFinite(entryCents) || entryCents <= 0) return { count: 0, costCents: 0 };
   let count = Math.max(1, Math.floor(100 / entryCents));
   while (count > 1 && count * entryCents > HARD_MAX_ORDER_COST_CENTS) count--;
   return { count, costCents: count * entryCents };
@@ -126,6 +127,14 @@ export async function executeProbe(
 ): Promise<ExecuteResult[]> {
   if (plan.length > HARD_MAX_ORDERS) {
     throw new Error(`probe plan has ${plan.length} orders, exceeds hard cap of ${HARD_MAX_ORDERS}`);
+  }
+
+  for (const p of plan) {
+    if (!Number.isFinite(p.order.costCents) || p.order.count < 1 || p.order.costCents < 1) {
+      throw new Error(
+        `order for ${p.candidate.market.marketTicker} has invalid count/costCents (count=${p.order.count}, costCents=${p.order.costCents})`,
+      );
+    }
   }
 
   const totalCostCents = plan.reduce((sum, p) => sum + p.order.costCents, 0);

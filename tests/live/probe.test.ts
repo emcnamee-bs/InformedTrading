@@ -37,6 +37,13 @@ describe("sizeOrder", () => {
       expect(costCents).toBeLessThanOrEqual(100);
     }
   });
+
+  it("rejects non-finite/non-positive entryCents with a zero-count order", () => {
+    expect(sizeOrder(0)).toEqual({ count: 0, costCents: 0 });
+    expect(sizeOrder(-5)).toEqual({ count: 0, costCents: 0 });
+    expect(sizeOrder(NaN)).toEqual({ count: 0, costCents: 0 });
+    expect(sizeOrder(Infinity)).toEqual({ count: 0, costCents: 0 });
+  });
 });
 
 // ---------- planProbe fixtures ----------
@@ -294,6 +301,24 @@ describe("executeProbe", () => {
     expect(okPlaceCalls).toHaveLength(10);
     const okTotal = okPlan.reduce((s, p) => s + p.order.costCents, 0);
     expect(okTotal).toBeLessThanOrEqual(1000);
+  });
+
+  it("rejects a plan containing a non-finite costCents order and never places any order", async () => {
+    const plan = [makeProbeCandidate("T1", 50, 1), makeProbeCandidate("T2", NaN, 1)];
+    const { client, balanceCalls, placeCalls } = fakeOrderClient(100_000);
+
+    await expect(executeProbe(client, plan)).rejects.toThrow();
+    expect(balanceCalls).toHaveLength(0);
+    expect(placeCalls).toHaveLength(0);
+  });
+
+  it("rejects a plan containing a zero-count order and never places any order", async () => {
+    const plan = [makeProbeCandidate("T1", 50, 1), makeProbeCandidate("T2", 0, 0)];
+    const { client, balanceCalls, placeCalls } = fakeOrderClient(100_000);
+
+    await expect(executeProbe(client, plan)).rejects.toThrow();
+    expect(balanceCalls).toHaveLength(0);
+    expect(placeCalls).toHaveLength(0);
   });
 
   it("places every order via placeLimitBuy with the sized order fields, after confirming balance, and returns orderId/status", async () => {
