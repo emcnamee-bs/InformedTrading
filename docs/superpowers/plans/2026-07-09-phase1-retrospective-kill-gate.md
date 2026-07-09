@@ -563,9 +563,7 @@ describe("order-flow features", () => {
   it("flowImbalance is 0 for balanced flow", () =>
     expect(flowImbalance([trade("yes", 5), trade("no", 5)])).toBe(0));
   it("flowImbalance abstains (null) with no trades", () =>
-    expect(flowImbalance([])).toBeNull();
-
-  );
+    expect(flowImbalance([])).toBeNull());
   it("volumeZScore flags a spike above baseline", () => {
     const z = volumeZScore(100, [10, 12, 9, 11, 10]);
     expect(z).not.toBeNull();
