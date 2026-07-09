@@ -1,9 +1,9 @@
 import { loadConfig } from "../config";
 import { HistoricalClient } from "../kalshi/historicalClient";
 import { readCache, writeCache } from "../kalshi/cache";
-import { Candle, Trade, ResolvedMarket } from "../kalshi/types";
-import { replayMarket } from "./replay";
-import { aggregate, Observation } from "../expectancy/strata";
+import { ResolvedMarket } from "../kalshi/types";
+import { runReplay } from "./run";
+import { aggregate } from "../expectancy/strata";
 import { renderReport, verdictFor } from "./report";
 
 function parseArgs(argv: string[]): { start: number; end: number; categories: string[] | null } {
@@ -38,21 +38,7 @@ async function main() {
   if (categories) markets = markets.filter((m) => categories.includes(m.category));
   console.error(`Replaying ${markets.length} resolved markets...`);
 
-  const allObs: Observation[] = [];
-  for (const m of markets) {
-    let candles = readCache<Candle>(cfg.cacheDir, `candles_${m.marketTicker}`);
-    if (!candles) {
-      candles = await client.getCandles(m.seriesTicker, m.marketTicker, m.openTs, m.closeTs);
-      writeCache(cfg.cacheDir, `candles_${m.marketTicker}`, candles);
-    }
-    let trades = readCache<Trade>(cfg.cacheDir, `trades_${m.marketTicker}`);
-    if (!trades) {
-      trades = await client.getTrades(m.marketTicker);
-      writeCache(cfg.cacheDir, `trades_${m.marketTicker}`, trades);
-    }
-    if (candles.length === 0) continue;
-    allObs.push(...replayMarket({ market: m, candles, trades }));
-  }
+  const allObs = await runReplay(client, markets, cfg);
 
   const stats = aggregate(allObs);
   const result = verdictFor(stats);

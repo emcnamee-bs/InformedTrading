@@ -32,4 +32,20 @@ describe("aggregate", () => {
     const ctrl = stats.find((s) => s.kind === "control")!;
     expect(ctrl.n).toBe(1);
   });
+
+  it("excludes non-finite drift values so a stratum's stats stay finite", () => {
+    const obs: Observation[] = [
+      { stratumKey: "Politics|mid", kind: "anomaly", drift: 0.1 },
+      { stratumKey: "Politics|mid", kind: "anomaly", drift: NaN },
+      { stratumKey: "Politics|mid", kind: "anomaly", drift: 0.3 },
+      { stratumKey: "Politics|mid", kind: "anomaly", drift: Infinity },
+    ];
+    const stats = aggregate(obs);
+    const anom = stats.find((s) => s.kind === "anomaly")!;
+    expect(anom.n).toBe(2); // only the two finite observations counted
+    expect(Number.isFinite(anom.meanDrift)).toBe(true);
+    expect(Number.isFinite(anom.lo)).toBe(true);
+    expect(Number.isFinite(anom.hi)).toBe(true);
+    expect(anom.meanDrift).toBeCloseTo(0.2, 6);
+  });
 });

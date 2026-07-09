@@ -11,6 +11,9 @@ import { feePerContract } from "./fees";
 export function realizedDrift(entry: Candle, direction: Side, outcome: Side): number {
   const entryCents =
     direction === "yes" ? entry.yesAsk.close : 100 - entry.yesBid.close;
+  // Out-of-domain / degenerate book (e.g. empty ask -> 0c, empty bid -> 100c NO entry):
+  // return NaN rather than letting entryCost hit 0 and produce +/-Infinity downstream.
+  if (!Number.isFinite(entryCents) || entryCents <= 0 || entryCents >= 100) return NaN;
   const fee = feePerContract(entryCents);
   const entryCost = entryCents / 100 + fee; // dollars per contract
   const payout = direction === outcome ? 1 : 0;

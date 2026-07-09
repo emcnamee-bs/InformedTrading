@@ -30,4 +30,20 @@ describe("realizedDrift", () => {
     const loss = realizedDrift(c(49, 51), "yes", "no");
     expect((win + loss) / 2).toBeLessThan(0);
   });
+
+  it("YES side, empty ask (0c) -> degenerate entry -> NaN, not Infinity", () => {
+    const result = realizedDrift(c(58, 0), "yes", "yes");
+    expect(Number.isNaN(result)).toBe(true);
+    expect(Number.isFinite(result)).toBe(false);
+  });
+
+  it("NO side, empty bid (yesBid.close = 100) -> entryCents 0 -> NaN, not Infinity", () => {
+    const result = realizedDrift(c(100, 100), "no", "no");
+    expect(Number.isNaN(result)).toBe(true);
+  });
+
+  it("YES side, ask at 100c (entryCents >= 100) -> NaN", () => {
+    const result = realizedDrift(c(58, 100), "yes", "yes");
+    expect(Number.isNaN(result)).toBe(true);
+  });
 });

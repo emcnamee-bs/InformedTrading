@@ -44,18 +44,14 @@ export function replayMarket(
     if (horizonSec <= 0 || horizonSec > maxHorizonSec) return;
 
     if (isAnomaly && direction) {
-      obs.push({
-        stratumKey: key,
-        kind: "anomaly",
-        drift: realizedDrift(entry, direction, market.outcome),
-      });
+      const drift = realizedDrift(entry, direction, market.outcome);
+      // Belt-and-suspenders: a degenerate entry book yields NaN (see drift.ts); don't
+      // record it (aggregate() also filters non-finite drifts as the required safety net).
+      if (Number.isFinite(drift)) obs.push({ stratumKey: key, kind: "anomaly", drift });
     } else if (idx % CONTROL_EVERY === 0) {
       // control: what a naive YES-follow would have returned here
-      obs.push({
-        stratumKey: key,
-        kind: "control",
-        drift: realizedDrift(entry, "yes", market.outcome),
-      });
+      const drift = realizedDrift(entry, "yes", market.outcome);
+      if (Number.isFinite(drift)) obs.push({ stratumKey: key, kind: "control", drift });
     }
   });
 

@@ -62,4 +62,18 @@ describe("replayMarket", () => {
     // Resolution ~40 days after entry (> 31) -> every window skipped.
     expect(replayMarket({ market, candles: [...flat, ...surge], trades }, 3, 5)).toHaveLength(0);
   });
+
+  it("does not record an observation whose drift is non-finite (degenerate entry book)", () => {
+    // Flat control candles, but the entry candle for each window has yesAsk.close = 0
+    // (empty ask) -> realizedDrift returns NaN for the "yes" control leg -> must be skipped.
+    const flat = Array.from({ length: 20 }, (_, i) => candle(i, 50, 5, 100));
+    const degenerate = flat.map((c) => ({ ...c, yesAsk: { ...c.yesAsk, close: 0 } }));
+    const market: ResolvedMarket = {
+      marketTicker: "M", seriesTicker: "S", category: "Sports",
+      outcome: "no", openTs: 0, closeTs: 21, liquidityVolume: 10_000,
+    };
+    const obs = replayMarket({ market, candles: degenerate, trades: [] }, 3, 5);
+    expect(obs).toHaveLength(0);
+    expect(obs.every((o) => Number.isFinite(o.drift))).toBe(true);
+  });
 });

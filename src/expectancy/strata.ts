@@ -26,7 +26,10 @@ export function aggregate(obs: Observation[]): StratumStat[] {
   const stats: StratumStat[] = [];
   for (const [key, arr] of groups) {
     const [stratumKey, kind] = key.split("::") as [string, "anomaly" | "control"];
-    const ci = meanCI95(arr.map((o) => o.drift));
+    // Drop non-finite drift values (degenerate/extreme books) so one bad observation
+    // can't poison the whole stratum's mean/CI (final-review #6).
+    const drifts = arr.map((o) => o.drift).filter((d) => Number.isFinite(d));
+    const ci = meanCI95(drifts);
     stats.push({ stratumKey, kind, n: ci.n, meanDrift: ci.mean, lo: ci.lo, hi: ci.hi });
   }
   return stats;
