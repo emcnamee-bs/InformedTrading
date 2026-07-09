@@ -35,4 +35,17 @@ describe("order-flow features", () => {
     });
     expect(oiDelta([c(100), c(140)])).toBe(40);
   });
+  it("oiDelta abstains with fewer than 2 candles", () => {
+    const c = (oi: number): Candle => ({
+      marketTicker: "T", seriesTicker: "S", endPeriodTs: 0, periodMinutes: 1,
+      price: { open: 50, high: 50, low: 50, close: 50, mean: 50 },
+      yesBid: { open: 49, high: 49, low: 49, close: 49 },
+      yesAsk: { open: 51, high: 51, low: 51, close: 51 },
+      volume: 0, openInterest: oi,
+    });
+    expect(oiDelta([])).toBeNull();
+    expect(oiDelta([c(100)])).toBeNull();
+  });
+  it("volumeZScore abstains when baseline has zero variance", () =>
+    expect(volumeZScore(15, [10, 10, 10, 10, 10])).toBeNull());
 });
