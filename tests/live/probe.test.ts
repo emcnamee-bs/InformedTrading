@@ -287,6 +287,24 @@ describe("planProbe", () => {
     errSpy.mockRestore();
   });
 
+  it("forwards windowSize/baselineSize opts through to detectCandidate", async () => {
+    const ticker = "MKT-WINDOW-FORWARD";
+    const markets = [makeMarket(ticker)];
+    const dataByTicker = new Map([[ticker, buildSurgeData(ticker, 1.0)]]); // 11 candles total
+    const deps = makeDeps(markets, dataByTicker, alwaysUnexplained());
+
+    // Sanity: with default window/baseline sizes (3/5), this market yields a candidate.
+    const defaultPlan = await planProbe(deps, baseOpts);
+    expect(defaultPlan.map((p) => p.candidate.market.marketTicker)).toEqual([ticker]);
+
+    // With a baselineSize larger than the available candle history, slidingWindows (see
+    // src/replay/windows.ts) produces zero slices, so detectCandidate must return null for
+    // this market -- this can only happen if planProbe actually forwards opts.baselineSize
+    // through to detectCandidate instead of relying on its own default.
+    const starvedPlan = await planProbe(deps, { ...baseOpts, baselineSize: 20 });
+    expect(starvedPlan).toEqual([]);
+  });
+
   it("produces deterministic clientOrderIds (no randomness) across repeated runs with the same nowTs", async () => {
     const ticker = "MKT-DETERMINISTIC";
     const markets = [makeMarket(ticker)];

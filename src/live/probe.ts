@@ -44,6 +44,11 @@ export interface ProbeOpts {
   period: 1 | 60 | 1440;
   maxBets: number;
   viability?: ViabilityParams;
+  // Detection window sizing for detectCandidate (see candidate.ts / windows.ts). Optional --
+  // defaults (3 / 5) match detectCandidate's own defaults so existing callers/tests are
+  // unaffected when these are omitted.
+  windowSize?: number;
+  baselineSize?: number;
 }
 
 export interface ProbeCandidate {
@@ -92,7 +97,7 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
         deps.getTrades(market.marketTicker, startTs, endTs),
       ]);
 
-      const candidate = detectCandidate(market, candles, trades);
+      const candidate = detectCandidate(market, candles, trades, opts.windowSize, opts.baselineSize);
       if (!candidate) continue;
       anomaliesDetected++;
 

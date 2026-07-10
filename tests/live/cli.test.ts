@@ -12,6 +12,8 @@ describe("parseArgs", () => {
       maxMarkets: 300,
       period: 60,
       maxBets: 10,
+      windowSize: 3,
+      baselineSize: 5,
       live: false,
       confirm: false,
     });
@@ -23,6 +25,8 @@ describe("parseArgs", () => {
       "--max-markets", "50",
       "--period", "1440",
       "--max-bets", "3",
+      "--window", "24",
+      "--baseline", "24",
       "--live",
       "--confirm",
     ]);
@@ -31,9 +35,33 @@ describe("parseArgs", () => {
       maxMarkets: 50,
       period: 1440,
       maxBets: 3,
+      windowSize: 24,
+      baselineSize: 24,
       live: true,
       confirm: true,
     });
+  });
+
+  it("--window and --baseline default to 3 and 5 when omitted", () => {
+    const args = parseArgs([]);
+    expect(args.windowSize).toBe(3);
+    expect(args.baselineSize).toBe(5);
+  });
+
+  it("throws on a non-positive --window value", () => {
+    expect(() => parseArgs(["--window", "0"])).toThrow(/window/i);
+  });
+
+  it("throws on a non-integer --window value", () => {
+    expect(() => parseArgs(["--window", "abc"])).toThrow(/window/i);
+  });
+
+  it("throws on a non-positive --baseline value", () => {
+    expect(() => parseArgs(["--baseline", "-1"])).toThrow(/baseline/i);
+  });
+
+  it("throws on a non-integer --baseline value", () => {
+    expect(() => parseArgs(["--baseline", "1.5"])).toThrow(/baseline/i);
   });
 
   it("defaults to dry-run (live=false) when --live is omitted, even if --confirm is present", () => {

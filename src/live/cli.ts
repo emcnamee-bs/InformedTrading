@@ -11,13 +11,15 @@ export interface CliArgs {
   maxMarkets: number;
   period: 1 | 60 | 1440;
   maxBets: number;
+  windowSize: number;
+  baselineSize: number;
   live: boolean;
   confirm: boolean;
 }
 
 const USAGE =
   "usage: npm run probe -- [--min-volume V] [--max-markets N] [--period 1|60|1440] " +
-  "[--max-bets N] [--live --confirm]";
+  "[--max-bets N] [--window N] [--baseline N] [--live --confirm]";
 
 export function parseArgs(argv: string[]): CliArgs {
   const get = (flag: string) => {
@@ -49,11 +51,25 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error(`--max-bets must be a positive integer, got: ${maxBetsRaw}\n${USAGE}`);
   }
 
+  const windowSizeRaw = get("--window");
+  const windowSize = windowSizeRaw !== undefined ? Number(windowSizeRaw) : 3;
+  if (!Number.isInteger(windowSize) || windowSize <= 0) {
+    throw new Error(`--window must be a positive integer, got: ${windowSizeRaw}\n${USAGE}`);
+  }
+
+  const baselineSizeRaw = get("--baseline");
+  const baselineSize = baselineSizeRaw !== undefined ? Number(baselineSizeRaw) : 5;
+  if (!Number.isInteger(baselineSize) || baselineSize <= 0) {
+    throw new Error(`--baseline must be a positive integer, got: ${baselineSizeRaw}\n${USAGE}`);
+  }
+
   return {
     minVolume,
     maxMarkets,
     period: period as 1 | 60 | 1440,
     maxBets,
+    windowSize,
+    baselineSize,
     live: argv.includes("--live"),
     confirm: argv.includes("--confirm"),
   };
@@ -168,7 +184,8 @@ async function main() {
 
   console.error(
     `Run config: minVolume=${args.minVolume} maxMarkets=${args.maxMarkets} period=${args.period}min ` +
-      `maxBets=${args.maxBets} mode=${willPlaceOrders ? "LIVE" : "DRY-RUN"}`,
+      `maxBets=${args.maxBets} window=${args.windowSize} baseline=${args.baselineSize} ` +
+      `mode=${willPlaceOrders ? "LIVE" : "DRY-RUN"}`,
   );
 
   const plan = await planProbe(
@@ -185,6 +202,8 @@ async function main() {
       maxMarkets: args.maxMarkets,
       period: args.period,
       maxBets: args.maxBets,
+      windowSize: args.windowSize,
+      baselineSize: args.baselineSize,
     },
   );
 
