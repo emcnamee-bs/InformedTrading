@@ -16,6 +16,7 @@ export interface CliArgs {
   minReturn: number;
   maxHorizonDays: number;
   maxSpreadCents: number | undefined;
+  categories: string[] | undefined;
   live: boolean;
   confirm: boolean;
 }
@@ -23,7 +24,36 @@ export interface CliArgs {
 const USAGE =
   "usage: npm run probe -- [--min-volume V] [--max-markets N] [--period 1|60|1440] " +
   "[--max-bets N] [--window N] [--baseline N] [--min-return PCT] [--horizon-days N] " +
-  "[--max-spread N] [--live --confirm]";
+  "[--max-spread N] [--categories A,B,C] [--section culture,mentions] [--live --confirm]";
+
+// Friendly section names (as they appear in Kalshi's top nav) -> the underlying API categories.
+// "Culture" is not itself an API category; it maps to Entertainment (+ Social).
+const SECTION_MAP: Record<string, string[]> = {
+  culture: ["Entertainment", "Social"],
+  mentions: ["Mentions"],
+  politics: ["Politics", "Elections"],
+  economics: ["Economics", "Financials"],
+  companies: ["Companies"],
+};
+
+/** Resolves --categories (raw API names) and --section (friendly aliases) into one deduped list. */
+export function resolveCategories(rawCategories?: string, rawSections?: string): string[] | undefined {
+  const out: string[] = [];
+  if (rawCategories) out.push(...rawCategories.split(",").map((s) => s.trim()).filter(Boolean));
+  if (rawSections) {
+    for (const s of rawSections.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+      const mapped = SECTION_MAP[s];
+      if (!mapped) {
+        throw new Error(
+          `unknown --section "${s}"; valid sections: ${Object.keys(SECTION_MAP).join(", ")}\n${USAGE}`,
+        );
+      }
+      out.push(...mapped);
+    }
+  }
+  if (out.length === 0) return undefined;
+  return [...new Set(out)];
+}
 
 export function parseArgs(argv: string[]): CliArgs {
   const get = (flag: string) => {
@@ -86,6 +116,8 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error(`--max-spread must be a positive integer, got: ${maxSpreadRaw}\n${USAGE}`);
   }
 
+  const categories = resolveCategories(get("--categories"), get("--section"));
+
   return {
     minVolume,
     maxMarkets,
@@ -96,6 +128,7 @@ export function parseArgs(argv: string[]): CliArgs {
     minReturn,
     maxHorizonDays,
     maxSpreadCents,
+    categories,
     live: argv.includes("--live"),
     confirm: argv.includes("--confirm"),
   };
@@ -213,6 +246,7 @@ async function main() {
       `maxBets=${args.maxBets} window=${args.windowSize} baseline=${args.baselineSize} ` +
       `minReturn=${(args.minReturn * 100).toFixed(1)}% horizonDays=${args.maxHorizonDays} ` +
       `maxSpread=${args.maxSpreadCents ?? "default"} ` +
+      `categories=${args.categories ? args.categories.join("+") : "ALL"} ` +
       `mode=${willPlaceOrders ? "LIVE" : "DRY-RUN"}`,
   );
 
@@ -235,6 +269,7 @@ async function main() {
       minReturn: args.minReturn,
       maxHorizonDays: args.maxHorizonDays,
       maxSpreadCents: args.maxSpreadCents,
+      ...(args.categories ? { categories: args.categories } : {}),
     },
   );
 

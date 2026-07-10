@@ -26,7 +26,11 @@ export function sizeOrder(entryCents: number): { count: number; costCents: numbe
 }
 
 export interface ProbeDeps {
-  listOpenMarkets: (opts: { minVolume?: number; maxMarkets?: number }) => Promise<LiveMarket[]>;
+  listOpenMarkets: (opts: {
+    minVolume?: number;
+    maxMarkets?: number;
+    categories?: string[];
+  }) => Promise<LiveMarket[]>;
   getCandles: (
     seriesTicker: string,
     marketTicker: string,
@@ -44,6 +48,9 @@ export interface ProbeOpts {
   maxMarkets: number;
   period: 1 | 60 | 1440;
   maxBets: number;
+  // Optional Kalshi category filter (e.g. ["Entertainment","Social","Mentions"]). When set, only
+  // markets whose event is in one of these categories are scanned. Omit to scan all categories.
+  categories?: string[];
   viability?: ViabilityParams;
   // Individual viability overrides (operator-facing, e.g. via CLI flags) -- when provided,
   // each overrides only that one field of DEFAULT_VIABILITY (see buildViabilityParams below).
@@ -102,7 +109,11 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   const endTs = deps.nowTs;
   const viabilityParams = buildViabilityParams(opts);
 
-  const markets = await deps.listOpenMarkets({ minVolume: opts.minVolume, maxMarkets: opts.maxMarkets });
+  const markets = await deps.listOpenMarkets({
+    minVolume: opts.minVolume,
+    maxMarkets: opts.maxMarkets,
+    ...(opts.categories && opts.categories.length > 0 ? { categories: opts.categories } : {}),
+  });
 
   const kept: { candidate: LiveCandidate; investigation: Investigation }[] = [];
   let skipped = 0;

@@ -460,4 +460,58 @@ describe("HistoricalClient", () => {
     const markets = await client.listResolvedMarkets(0, 100, { minVolume: 1000 });
     expect(markets.map((m) => m.marketTicker)).toEqual(["HIGH", "EXACT"]);
   });
+
+  it("listOpenMarkets filters by category (resolving category via each market's event)", async () => {
+    const tradeable = { yes_bid_dollars: "0.50", yes_ask_dollars: "0.52", volume_fp: "1000", open_time: "1970-01-01T00:00:00Z", close_time: "2100-01-01T00:00:00Z" };
+    const fetchFn = fakeFetch({
+      "/trade-api/v2/events": {
+        events: [
+          { event_ticker: "EV-ENT", category: "Entertainment" },
+          { event_ticker: "EV-MEN", category: "Mentions" },
+          { event_ticker: "EV-SPT", category: "Sports" },
+        ],
+        cursor: "",
+      },
+      "/trade-api/v2/markets": {
+        markets: [
+          { ticker: "ENT1", event_ticker: "EV-ENT", ...tradeable },
+          { ticker: "MEN1", event_ticker: "EV-MEN", ...tradeable },
+          { ticker: "SPT1", event_ticker: "EV-SPT", ...tradeable },
+        ],
+        cursor: "",
+      },
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+    );
+    const markets = await client.listOpenMarkets({ categories: ["Entertainment", "Mentions"] });
+    expect(markets.map((m) => m.marketTicker)).toEqual(["ENT1", "MEN1"]);
+    // category filter also populates the real category (not the series ticker) on each result.
+    expect(markets.map((m) => m.category)).toEqual(["Entertainment", "Mentions"]);
+  });
+
+  it("listOpenMarkets without a category filter never calls /events and keeps all categories", async () => {
+    let eventsCalls = 0;
+    const tradeable = { yes_bid_dollars: "0.50", yes_ask_dollars: "0.52", volume_fp: "1000", open_time: "1970-01-01T00:00:00Z", close_time: "2100-01-01T00:00:00Z" };
+    const fetchFn = (async (url: string) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/events")) {
+        eventsCalls += 1;
+        return { ok: true, status: 200, json: async () => ({ events: [], cursor: "" }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ markets: [{ ticker: "M1", event_ticker: "EV-1", ...tradeable }], cursor: "" }),
+      };
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+    );
+    const markets = await client.listOpenMarkets({});
+    expect(markets.map((m) => m.marketTicker)).toEqual(["M1"]);
+    expect(eventsCalls).toBe(0);
+  });
 });

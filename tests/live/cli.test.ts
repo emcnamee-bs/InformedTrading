@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseArgs, loadTradingCredentials, loadDotEnv } from "../../src/live/cli";
+import { parseArgs, loadTradingCredentials, loadDotEnv, resolveCategories } from "../../src/live/cli";
 
 describe("parseArgs", () => {
   it("applies defaults when no flags are given", () => {
@@ -191,5 +191,42 @@ describe("loadDotEnv", () => {
 
   it("is a no-op when the file does not exist", () => {
     expect(() => loadDotEnv(join(tmpdir(), "definitely-not-a-real-dotenv-file"))).not.toThrow();
+  });
+});
+
+describe("resolveCategories", () => {
+  it("returns undefined when neither --categories nor --section is given", () => {
+    expect(resolveCategories(undefined, undefined)).toBeUndefined();
+    expect(resolveCategories("", "")).toBeUndefined();
+  });
+
+  it("passes through raw --categories names", () => {
+    expect(resolveCategories("Entertainment,Mentions", undefined)).toEqual(["Entertainment", "Mentions"]);
+  });
+
+  it("maps --section culture,mentions to the underlying API categories", () => {
+    expect(resolveCategories(undefined, "culture,mentions")).toEqual(["Entertainment", "Social", "Mentions"]);
+  });
+
+  it("merges --categories and --section and dedupes", () => {
+    expect(resolveCategories("Social", "culture")).toEqual(["Social", "Entertainment"]);
+  });
+
+  it("throws on an unknown section", () => {
+    expect(() => resolveCategories(undefined, "sportsball")).toThrow(/unknown --section/);
+  });
+});
+
+describe("parseArgs categories", () => {
+  it("defaults categories to undefined (scan all)", () => {
+    expect(parseArgs([]).categories).toBeUndefined();
+  });
+
+  it("parses --section into categories", () => {
+    expect(parseArgs(["--section", "culture,mentions"]).categories).toEqual([
+      "Entertainment",
+      "Social",
+      "Mentions",
+    ]);
   });
 });

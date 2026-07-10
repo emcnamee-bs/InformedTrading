@@ -221,10 +221,19 @@ export class HistoricalClient {
     minVolume?: number;
     maxMarkets?: number;
     maxSpreadCents?: number;
+    categories?: string[];
   }): Promise<LiveMarket[]> {
     const minVolume = opts?.minVolume ?? 0;
     const maxMarkets = opts?.maxMarkets;
     const maxSpreadCents = opts?.maxSpreadCents ?? 20;
+    // Category filter (e.g. ["Entertainment","Mentions"]). Markets carry event_ticker but not a
+    // category, so when a filter is given we resolve each market's category via its event by
+    // building the open-event -> category map once up front. Matched case-insensitively.
+    const categorySet =
+      opts?.categories && opts.categories.length > 0
+        ? new Set(opts.categories.map((c) => c.toLowerCase()))
+        : undefined;
+    const eventCategories = categorySet ? await this.fetchEventCategories() : undefined;
     const markets: LiveMarket[] = [];
     let cursor: string | undefined;
     do {
@@ -235,13 +244,16 @@ export class HistoricalClient {
         cursor,
       });
       for (const m of body.markets ?? []) {
+        const eventCategory = eventCategories?.get(m.event_ticker ?? "");
+        if (categorySet && (!eventCategory || !categorySet.has(eventCategory.toLowerCase())))
+          continue;
         const seriesTicker = seriesFromEvent(m.event_ticker ?? "");
         const yesBidCents = dollarsToCents(m.yes_bid_dollars);
         const yesAskCents = dollarsToCents(m.yes_ask_dollars);
         const live: LiveMarket = {
           marketTicker: m.ticker,
           seriesTicker,
-          category: seriesTicker,
+          category: eventCategory ?? seriesTicker,
           openTs: isoToUnix(m.open_time),
           closeTs: isoToUnix(m.close_time),
           liquidityVolume: parseFp(m.volume_fp),
@@ -256,5 +268,23 @@ export class HistoricalClient {
       if (maxMarkets !== undefined && markets.length >= maxMarkets) break;
     } while (cursor);
     return maxMarkets !== undefined ? markets.slice(0, maxMarkets) : markets;
+  }
+
+  /**
+   * Maps each OPEN event's ticker to its Kalshi category (e.g. "Entertainment", "Mentions",
+   * "Politics"). The /markets payload carries event_ticker but not category, so this is how
+   * listOpenMarkets resolves a market's category for the --categories filter.
+   */
+  async fetchEventCategories(): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    let cursor: string | undefined;
+    do {
+      const body = await this.getJson("/events", { status: "open", limit: 200, cursor });
+      for (const e of body.events ?? []) {
+        if (e.event_ticker && e.category) map.set(e.event_ticker, e.category);
+      }
+      cursor = body.cursor || undefined;
+    } while (cursor);
+    return map;
   }
 }
