@@ -3,7 +3,10 @@ import { Candle, Trade, ResolvedMarket, LiveMarket, Side } from "./types";
 import { RateGovernor } from "./rateGovernor";
 import { dollarsToCents, parseFp, isoToUnix, seriesFromEvent, midCents } from "./parse";
 
-type FetchLike = (url: string) => Promise<{
+type FetchLike = (
+  url: string,
+  init?: { signal?: AbortSignal },
+) => Promise<{
   ok: boolean;
   status: number;
   json: () => Promise<any>;
@@ -32,6 +35,10 @@ export class HistoricalClient {
     private readonly fetchFn: FetchLike = fetch as unknown as FetchLike,
     private readonly sleepFn: SleepFn = realSleep,
     private readonly baseDelayMs = 500,
+    // Per-request wall-clock cap. A bare fetch never rejects when a socket is
+    // accepted but the server never responds (stale keep-alive), which hangs the
+    // whole sweep forever. Aborting turns that into a retryable error.
+    private readonly requestTimeoutMs = 20000,
   ) {
     this.gov = new RateGovernor(cfg.requestsPerSecond);
   }
@@ -60,12 +67,16 @@ export class HistoricalClient {
       await this.gov.acquire();
       const isLastAttempt = attempt >= this.maxRetries;
       let res: Awaited<ReturnType<FetchLike>>;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs);
       try {
-        res = await this.fetchFn(url);
+        res = await this.fetchFn(url, { signal: controller.signal });
       } catch (err) {
         if (isLastAttempt) throw err;
         await this.sleepFn(this.backoffDelayMs(attempt));
         continue;
+      } finally {
+        clearTimeout(timer);
       }
       if (res.ok) return res.json();
 

@@ -374,6 +374,31 @@ describe("HistoricalClient", () => {
     expect(calls).toBe(2);
   });
 
+  it("aborts a hung request after the timeout and retries (never blocks forever)", async () => {
+    let calls = 0;
+    const fetchFn = ((_url: string, init?: { signal?: AbortSignal }) => {
+      calls += 1;
+      if (calls === 1) {
+        // Simulates a stale keep-alive socket: the server accepts the connection
+        // but never responds, so the promise only settles when the client aborts.
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ ticker: "M", candlesticks: [] }) });
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+      async () => {},
+      1,
+      5, // requestTimeoutMs: abort the hung call after 5ms
+    );
+    const candles = await client.getCandles("S", "M", 0, 2000);
+    expect(candles).toEqual([]);
+    expect(calls).toBe(2);
+  });
+
   it("does not retry a non-retryable 404 (throws immediately, single attempt)", async () => {
     let calls = 0;
     const fetchFn = (async () => {
