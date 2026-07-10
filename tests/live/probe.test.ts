@@ -263,6 +263,30 @@ describe("planProbe", () => {
     errSpy.mockRestore();
   });
 
+  it("logs a Funnel summary line to stderr and still returns unchanged behavior (1 kept of 2 markets)", async () => {
+    const anomalyTicker = "MKT-FUNNEL-ANOMALY";
+    const flatTicker = "MKT-FUNNEL-FLAT";
+    const markets = [makeMarket(anomalyTicker), makeMarket(flatTicker)];
+    // Flat/no-surge candles for flatTicker mean detectCandidate returns null (no anomaly).
+    const flatCandles = Array.from({ length: 11 }, (_, i) => candle(i, 50, 5, 100));
+    const dataByTicker = new Map([
+      [anomalyTicker, buildSurgeData(anomalyTicker, 1.0)],
+      [flatTicker, { candles: flatCandles, trades: [] }],
+    ]);
+    const deps = makeDeps(markets, dataByTicker, alwaysUnexplained());
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const plan = await planProbe(deps, baseOpts);
+
+    // Behavior is unchanged: exactly the one UNEXPLAINED anomaly is kept.
+    expect(plan.map((p) => p.candidate.market.marketTicker)).toEqual([anomalyTicker]);
+
+    const lines = errSpy.mock.calls.map((c) => String(c[0]));
+    expect(lines.some((l) => l.startsWith("Funnel:"))).toBe(true);
+    expect(lines.some((l) => l.includes(`investigate ${anomalyTicker}`))).toBe(true);
+    errSpy.mockRestore();
+  });
+
   it("produces deterministic clientOrderIds (no randomness) across repeated runs with the same nowTs", async () => {
     const ticker = "MKT-DETERMINISTIC";
     const markets = [makeMarket(ticker)];

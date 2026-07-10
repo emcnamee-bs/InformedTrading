@@ -1,7 +1,7 @@
 import { LiveMarket, Candle, Trade } from "../kalshi/types";
 import { LiveCandidate, detectCandidate } from "./candidate";
 import { isViable, ViabilityParams } from "./viability";
-import { Investigator, Investigation, keepUnexplained } from "./investigator";
+import { Investigator, Investigation, Verdict, keepUnexplained } from "./investigator";
 import { OrderRequest } from "../kalshi/orderClient";
 
 // Hard safety caps for the live probe. These are NOT tuning knobs -- they bound real-money
@@ -74,6 +74,14 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   const kept: { candidate: LiveCandidate; investigation: Investigation }[] = [];
   let skipped = 0;
 
+  // Funnel diagnostics only -- these counters do not influence which candidates are kept
+  // or how they're ranked/sized; they exist purely to log where candidates drop off.
+  let anomaliesDetected = 0;
+  let viableCount = 0;
+  const viabilityRejectReasons: Record<string, number> = {};
+  let investigatedCount = 0;
+  const verdictCounts: Record<Verdict, number> = { EXPLAINED: 0, UNEXPLAINED: 0, AMBIGUOUS: 0 };
+
   // Sequential loop with a per-market try/catch: an isolated fetch/detect failure (e.g. a
   // persistent 429 after retries) skips that one market and continues the scan rather than
   // aborting the whole plan via an unguarded Promise.all.
@@ -86,11 +94,22 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
 
       const candidate = detectCandidate(market, candles, trades);
       if (!candidate) continue;
+      anomaliesDetected++;
 
       const viability = isViable(candidate, deps.nowTs, opts.viability);
-      if (!viability.viable) continue;
+      if (!viability.viable) {
+        const reason = viability.reason ?? "unknown";
+        viabilityRejectReasons[reason] = (viabilityRejectReasons[reason] ?? 0) + 1;
+        continue;
+      }
+      viableCount++;
 
       const investigation = await deps.investigator.investigate(candidate);
+      investigatedCount++;
+      verdictCounts[investigation.verdict]++;
+      console.error(
+        `investigate ${candidate.market.marketTicker} dir=${candidate.direction} entry=${candidate.entryCents} -> ${investigation.verdict}`,
+      );
       if (!keepUnexplained(investigation)) continue;
 
       kept.push({ candidate, investigation });
@@ -106,6 +125,17 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   kept.sort((a, b) => b.candidate.anomalyScore - a.candidate.anomalyScore);
   const maxBets = Math.min(opts.maxBets ?? HARD_MAX_ORDERS, HARD_MAX_ORDERS);
   const top = kept.slice(0, maxBets);
+
+  console.error(
+    `Funnel: scanned=${markets.length - skipped} skipped=${skipped} | anomalies=${anomaliesDetected} viable=${viableCount} investigated=${investigatedCount} | ` +
+      `verdicts EXPLAINED=${verdictCounts.EXPLAINED} UNEXPLAINED=${verdictCounts.UNEXPLAINED} AMBIGUOUS=${verdictCounts.AMBIGUOUS} | kept=${top.length}`,
+  );
+  if (Object.keys(viabilityRejectReasons).length > 0) {
+    const breakdown = Object.entries(viabilityRejectReasons)
+      .map(([reason, count]) => `${reason}=${count}`)
+      .join(", ");
+    console.error(`viability drops: ${breakdown}`);
+  }
 
   return top.map((k, i) => ({
     candidate: k.candidate,
