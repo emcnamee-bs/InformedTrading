@@ -199,20 +199,34 @@ export class HistoricalClient {
    * Live-universe analog of `listResolvedMarkets`: scans currently-open markets (status=open)
    * with the same volume-filter + early-stop-at-cap pagination logic, mapping the live order
    * book (yes bid/ask) to cents for downstream anomaly detection.
+   *
+   * `mve_filter=exclude` drops Kalshi's multivariate-parlay (MVE) markets server-side -- those
+   * are structurally untradeable (bid=0/ask=100) and have ~no candle history, so they were
+   * dominating the first N pages of `status=open` and starving the real-market scan. The
+   * `maxSpreadCents` check is a coarse client-side pre-filter (not the real viability gate,
+   * which lives downstream) so the maxMarkets scan cap isn't wasted on dead order books.
    */
-  async listOpenMarkets(opts?: { minVolume?: number; maxMarkets?: number }): Promise<LiveMarket[]> {
+  async listOpenMarkets(opts?: {
+    minVolume?: number;
+    maxMarkets?: number;
+    maxSpreadCents?: number;
+  }): Promise<LiveMarket[]> {
     const minVolume = opts?.minVolume ?? 0;
     const maxMarkets = opts?.maxMarkets;
+    const maxSpreadCents = opts?.maxSpreadCents ?? 20;
     const markets: LiveMarket[] = [];
     let cursor: string | undefined;
     do {
       const body = await this.getJson("/markets", {
         status: "open",
+        mve_filter: "exclude",
         limit: 1000,
         cursor,
       });
       for (const m of body.markets ?? []) {
         const seriesTicker = seriesFromEvent(m.event_ticker ?? "");
+        const yesBidCents = dollarsToCents(m.yes_bid_dollars);
+        const yesAskCents = dollarsToCents(m.yes_ask_dollars);
         const live: LiveMarket = {
           marketTicker: m.ticker,
           seriesTicker,
@@ -220,10 +234,12 @@ export class HistoricalClient {
           openTs: isoToUnix(m.open_time),
           closeTs: isoToUnix(m.close_time),
           liquidityVolume: parseFp(m.volume_fp),
-          yesBidCents: dollarsToCents(m.yes_bid_dollars),
-          yesAskCents: dollarsToCents(m.yes_ask_dollars),
+          yesBidCents,
+          yesAskCents,
         };
-        if (live.liquidityVolume >= minVolume) markets.push(live);
+        const tradeable =
+          yesBidCents > 0 && yesAskCents < 100 && yesAskCents - yesBidCents <= maxSpreadCents;
+        if (live.liquidityVolume >= minVolume && tradeable) markets.push(live);
       }
       cursor = body.cursor || undefined;
       if (maxMarkets !== undefined && markets.length >= maxMarkets) break;
