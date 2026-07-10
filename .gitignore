@@ -1,0 +1,8 @@
+node_modules
+dist
+.cache
+.env
+.DS_Store
+# Kalshi credentials — NEVER commit
+*.pem
+kalshi_key.pem
