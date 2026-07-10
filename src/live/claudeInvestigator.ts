@@ -5,6 +5,13 @@ import { Investigation, Investigator, Verdict } from "./investigator";
 const DEFAULT_MODEL = "claude-opus-4-8";
 const MAX_TOKENS = 2048;
 
+// Per-investigation wall-clock cap. A web_search call runs several server-side search
+// rounds and can occasionally hang; without a bound, one stuck investigation freezes the
+// entire market sweep (the SDK default timeout is 10 minutes). On timeout the SDK throws,
+// which ClaudeInvestigator catches and fails safe to AMBIGUOUS -- so a timed-out candidate
+// is skipped, never bet, and the sweep keeps moving.
+const INVESTIGATOR_TIMEOUT_MS = 90_000;
+
 /** Structured result an investigation runner must produce. */
 export interface RunnerResult {
   verdict: Verdict;
@@ -85,13 +92,17 @@ export function extractLastJsonObject(text: string): unknown | null {
  */
 export function makeDefaultRunner(model = process.env.CLAUDE_INVESTIGATOR_MODEL?.trim() || DEFAULT_MODEL): InvestigateRunner {
   return async (candidate: LiveCandidate): Promise<RunnerResult> => {
-    const client = new Anthropic();
-    const response = await client.messages.create({
-      model,
-      max_tokens: MAX_TOKENS,
-      tools: [{ type: "web_search_20260209", name: "web_search" }],
-      messages: [{ role: "user", content: buildPrompt(candidate) }],
-    });
+    // Bounded timeout so a slow/hung web_search can't freeze the sweep; streaming (per the
+    // claude-api guidance for web_search / long calls) avoids non-streaming long-request pitfalls.
+    const client = new Anthropic({ timeout: INVESTIGATOR_TIMEOUT_MS, maxRetries: 1 });
+    const response = await client.messages
+      .stream({
+        model,
+        max_tokens: MAX_TOKENS,
+        tools: [{ type: "web_search_20260209", name: "web_search" }],
+        messages: [{ role: "user", content: buildPrompt(candidate) }],
+      })
+      .finalMessage();
 
     const text = response.content
       .filter((block): block is Anthropic.TextBlock => block.type === "text")
