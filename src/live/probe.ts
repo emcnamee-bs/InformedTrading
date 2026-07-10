@@ -58,21 +58,26 @@ export interface ProbeCandidate {
   clientOrderId: string;
 }
 
-// Sliding-window detection (see candidate.ts / windows.ts) needs at least baselineSize(5) +
-// windowSize(3) = 8 candles for a single slice; fetch a generous margin above that so the
-// latest window always has a full baseline to compare against.
-const LOOKBACK_PERIODS = 30;
-
 /**
  * Scans the open-market universe for live anomaly candidates, filters to those that are still
  * viable to enter and come back UNEXPLAINED from the investigator, ranks by anomalyScore, and
  * sizes a probe order for each of the top `maxBets`. Read-only end to end: never calls any
  * order-placement API.
+ *
+ * Candle/trade fetches use a RECENT window ending at `nowTs`, never the market's own
+ * [openTs, closeTs] lifetime -- for an OPEN market, closeTs is in the future, and the
+ * candlesticks endpoint only returns real data up to now (querying past `now` yields ~1 candle
+ * at period=60, or a 400 from too many empty buckets at period=1). Sliding-window detection
+ * (see candidate.ts / windows.ts) needs at least baselineSize + windowSize candles for a single
+ * slice, so the lookback scales with the configured (or default) window/baseline plus a margin.
  */
 export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<ProbeCandidate[]> {
-  const periodSeconds = opts.period * 60;
+  const windowSize = opts.windowSize ?? 3;
+  const baselineSize = opts.baselineSize ?? 5;
+  const periodMin = opts.period; // minutes per candle
+  const lookbackSec =
+    Math.max(windowSize + baselineSize + 5, (windowSize + baselineSize) * 2) * periodMin * 60;
   const endTs = deps.nowTs;
-  const startTs = endTs - LOOKBACK_PERIODS * periodSeconds;
 
   const markets = await deps.listOpenMarkets({ minVolume: opts.minVolume, maxMarkets: opts.maxMarkets });
 
@@ -92,6 +97,8 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   // aborting the whole plan via an unguarded Promise.all.
   for (const market of markets) {
     try {
+      // Never request candles/trades from before the market existed -- clamp per-market.
+      const startTs = Math.max(endTs - lookbackSec, market.openTs);
       const [candles, trades] = await Promise.all([
         deps.getCandles(market.seriesTicker, market.marketTicker, startTs, endTs, opts.period),
         deps.getTrades(market.marketTicker, startTs, endTs),

@@ -305,6 +305,96 @@ describe("planProbe", () => {
     expect(starvedPlan).toEqual([]);
   });
 
+  it("fetches a bounded recent candle/trade window ending at nowTs, never the market's future closeTs", async () => {
+    // A market that just opened, with a closeTs far in the future -- the classic OPEN-market
+    // shape that broke the old openTs->closeTs fetch (closeTs in the future returns ~1 candle
+    // or a 400). endTs must be nowTs and startTs must be a bounded lookback, never closeTs.
+    const ticker = "MKT-RECENT-WINDOW";
+    const openTs = NOW_TS - 100_000;
+    const closeTs = NOW_TS + 365 * 86400; // far future
+    const markets = [makeMarket(ticker, { openTs, closeTs })];
+    const dataByTicker = new Map([[ticker, buildSurgeData(ticker, 1.0)]]);
+
+    const candlesCalls: { startTs: number; endTs: number }[] = [];
+    const tradesCalls: { minTs?: number; maxTs?: number }[] = [];
+    const deps: ProbeDeps = {
+      listOpenMarkets: async () => markets,
+      getCandles: async (_series, _ticker, startTs, endTs) => {
+        candlesCalls.push({ startTs, endTs });
+        return dataByTicker.get(ticker)!.candles;
+      },
+      getTrades: async (_ticker, minTs, maxTs) => {
+        tradesCalls.push({ minTs, maxTs });
+        return dataByTicker.get(ticker)!.trades;
+      },
+      investigator: alwaysUnexplained(),
+      nowTs: NOW_TS,
+    };
+
+    await planProbe(deps, baseOpts); // baseOpts.period = 1, default window=3/baseline=5
+
+    const expectedLookbackSec = Math.max(3 + 5 + 5, (3 + 5) * 2) * baseOpts.period * 60;
+    const expectedStartTs = NOW_TS - expectedLookbackSec;
+
+    expect(candlesCalls).toHaveLength(1);
+    expect(candlesCalls[0]!.endTs).toBe(NOW_TS);
+    expect(candlesCalls[0]!.endTs).not.toBe(closeTs);
+    expect(candlesCalls[0]!.startTs).toBe(expectedStartTs);
+    expect(candlesCalls[0]!.startTs).toBeGreaterThan(openTs);
+
+    expect(tradesCalls).toHaveLength(1);
+    expect(tradesCalls[0]!.maxTs).toBe(NOW_TS);
+    expect(tradesCalls[0]!.minTs).toBe(expectedStartTs);
+  });
+
+  it("clamps the lookback start to the market's openTs when the market is younger than the full lookback window", async () => {
+    const ticker = "MKT-YOUNG";
+    const openTs = NOW_TS - 60; // market opened only 60s ago
+    const closeTs = NOW_TS + 365 * 86400;
+    const markets = [makeMarket(ticker, { openTs, closeTs })];
+    const dataByTicker = new Map([[ticker, buildSurgeData(ticker, 1.0)]]);
+
+    const candlesCalls: { startTs: number; endTs: number }[] = [];
+    const deps: ProbeDeps = {
+      listOpenMarkets: async () => markets,
+      getCandles: async (_series, _ticker, startTs, endTs) => {
+        candlesCalls.push({ startTs, endTs });
+        return dataByTicker.get(ticker)!.candles;
+      },
+      getTrades: async () => dataByTicker.get(ticker)!.trades,
+      investigator: alwaysUnexplained(),
+      nowTs: NOW_TS,
+    };
+
+    await planProbe(deps, baseOpts);
+
+    expect(candlesCalls[0]!.startTs).toBe(openTs); // clamped, not the unbounded lookback
+    expect(candlesCalls[0]!.endTs).toBe(NOW_TS);
+  });
+
+  it("scales the lookback window with windowSize/baselineSize opts instead of a fixed constant", async () => {
+    const ticker = "MKT-SCALED-LOOKBACK";
+    const markets = [makeMarket(ticker)];
+    const dataByTicker = new Map([[ticker, buildSurgeData(ticker, 1.0)]]);
+
+    const candlesCalls: { startTs: number; endTs: number }[] = [];
+    const deps: ProbeDeps = {
+      listOpenMarkets: async () => markets,
+      getCandles: async (_series, _ticker, startTs, endTs) => {
+        candlesCalls.push({ startTs, endTs });
+        return dataByTicker.get(ticker)!.candles;
+      },
+      getTrades: async () => dataByTicker.get(ticker)!.trades,
+      investigator: alwaysUnexplained(),
+      nowTs: NOW_TS,
+    };
+
+    await planProbe(deps, { ...baseOpts, windowSize: 10, baselineSize: 20 });
+
+    const expectedLookbackSec = Math.max(10 + 20 + 5, (10 + 20) * 2) * baseOpts.period * 60;
+    expect(candlesCalls[0]!.startTs).toBe(NOW_TS - expectedLookbackSec);
+  });
+
   it("produces deterministic clientOrderIds (no randomness) across repeated runs with the same nowTs", async () => {
     const ticker = "MKT-DETERMINISTIC";
     const markets = [makeMarket(ticker)];
