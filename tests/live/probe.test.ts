@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   sizeOrder,
   planProbe,
@@ -210,6 +210,57 @@ describe("planProbe", () => {
 
     expect(plan.length).toBeGreaterThan(0);
     expect(plan[0]!.candidate.market.marketTicker).toBe(ticker);
+  });
+
+  it("skips a market whose getCandles throws and still returns candidates from the good markets", async () => {
+    const badTicker = "MKT-BAD";
+    const goodTicker = "MKT-GOOD";
+    const markets = [makeMarket(badTicker), makeMarket(goodTicker)];
+    const dataByTicker = new Map([[goodTicker, buildSurgeData(goodTicker, 1.0)]]);
+    const deps: ProbeDeps = {
+      listOpenMarkets: async () => markets,
+      getCandles: async (_series, ticker) => {
+        if (ticker === badTicker) throw new Error("Kalshi HTTP 429 (persistent)");
+        return dataByTicker.get(ticker)?.candles ?? [];
+      },
+      getTrades: async (ticker) => dataByTicker.get(ticker)?.trades ?? [],
+      investigator: alwaysUnexplained(),
+      nowTs: NOW_TS,
+    };
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const plan = await planProbe(deps, baseOpts);
+
+    expect(plan.map((p) => p.candidate.market.marketTicker)).toEqual([goodTicker]);
+    expect(errSpy.mock.calls.some((c) => String(c[0]).includes(`skip ${badTicker}`))).toBe(true);
+    expect(errSpy.mock.calls.some((c) => String(c[0]).includes("1 scanned, 1 skipped"))).toBe(true);
+    errSpy.mockRestore();
+  });
+
+  it("skips a market whose getTrades throws without aborting the whole plan", async () => {
+    const badTicker = "MKT-BAD-TRADES";
+    const goodTicker = "MKT-GOOD-2";
+    const markets = [makeMarket(badTicker), makeMarket(goodTicker)];
+    const dataByTicker = new Map([
+      [badTicker, buildSurgeData(badTicker, 1.0)],
+      [goodTicker, buildSurgeData(goodTicker, 1.0)],
+    ]);
+    const deps: ProbeDeps = {
+      listOpenMarkets: async () => markets,
+      getCandles: async (_series, ticker) => dataByTicker.get(ticker)?.candles ?? [],
+      getTrades: async (ticker) => {
+        if (ticker === badTicker) throw new Error("network error");
+        return dataByTicker.get(ticker)?.trades ?? [];
+      },
+      investigator: alwaysUnexplained(),
+      nowTs: NOW_TS,
+    };
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const plan = await planProbe(deps, baseOpts);
+
+    expect(plan.map((p) => p.candidate.market.marketTicker)).toEqual([goodTicker]);
+    errSpy.mockRestore();
   });
 
   it("produces deterministic clientOrderIds (no randomness) across repeated runs with the same nowTs", async () => {

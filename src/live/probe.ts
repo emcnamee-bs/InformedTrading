@@ -72,24 +72,36 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   const markets = await deps.listOpenMarkets({ minVolume: opts.minVolume, maxMarkets: opts.maxMarkets });
 
   const kept: { candidate: LiveCandidate; investigation: Investigation }[] = [];
+  let skipped = 0;
 
+  // Sequential loop with a per-market try/catch: an isolated fetch/detect failure (e.g. a
+  // persistent 429 after retries) skips that one market and continues the scan rather than
+  // aborting the whole plan via an unguarded Promise.all.
   for (const market of markets) {
-    const [candles, trades] = await Promise.all([
-      deps.getCandles(market.seriesTicker, market.marketTicker, startTs, endTs, opts.period),
-      deps.getTrades(market.marketTicker, startTs, endTs),
-    ]);
+    try {
+      const [candles, trades] = await Promise.all([
+        deps.getCandles(market.seriesTicker, market.marketTicker, startTs, endTs, opts.period),
+        deps.getTrades(market.marketTicker, startTs, endTs),
+      ]);
 
-    const candidate = detectCandidate(market, candles, trades);
-    if (!candidate) continue;
+      const candidate = detectCandidate(market, candles, trades);
+      if (!candidate) continue;
 
-    const viability = isViable(candidate, deps.nowTs, opts.viability);
-    if (!viability.viable) continue;
+      const viability = isViable(candidate, deps.nowTs, opts.viability);
+      if (!viability.viable) continue;
 
-    const investigation = await deps.investigator.investigate(candidate);
-    if (!keepUnexplained(investigation)) continue;
+      const investigation = await deps.investigator.investigate(candidate);
+      if (!keepUnexplained(investigation)) continue;
 
-    kept.push({ candidate, investigation });
+      kept.push({ candidate, investigation });
+    } catch (err) {
+      skipped++;
+      console.error(`skip ${market.marketTicker}: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
   }
+
+  console.error(`Probe scan summary: ${markets.length - skipped} scanned, ${skipped} skipped (of ${markets.length} total)`);
 
   kept.sort((a, b) => b.candidate.anomalyScore - a.candidate.anomalyScore);
   const maxBets = Math.min(opts.maxBets ?? HARD_MAX_ORDERS, HARD_MAX_ORDERS);

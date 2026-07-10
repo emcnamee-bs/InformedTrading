@@ -3,7 +3,17 @@ import { Candle, Trade, ResolvedMarket, LiveMarket, Side } from "./types";
 import { RateGovernor } from "./rateGovernor";
 import { dollarsToCents, parseFp, isoToUnix, seriesFromEvent, midCents } from "./parse";
 
-type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>;
+type FetchLike = (url: string) => Promise<{
+  ok: boolean;
+  status: number;
+  json: () => Promise<any>;
+  headers?: { get(name: string): string | null };
+}>;
+
+/** Injectable so tests can skip real waiting; defaults to a real setTimeout-based sleep. */
+type SleepFn = (ms: number) => Promise<void>;
+
+const realSleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** value if finite, else the bid/ask mid (also NaN if that has no book either). */
 function fallbackToMid(value: number, bidCents: number, askCents: number): number {
@@ -12,23 +22,58 @@ function fallbackToMid(value: number, bidCents: number, askCents: number): numbe
 
 export class HistoricalClient {
   private readonly gov: RateGovernor;
+  // Small, bounded retry budget for transient failures (rate limiting / server hiccups /
+  // network blips). Not a tuning knob for correctness -- just keeps a flaky upstream from
+  // aborting an entire sweep on a single 429.
+  private readonly maxRetries = 4;
+
   constructor(
     private readonly cfg: Config,
     private readonly fetchFn: FetchLike = fetch as unknown as FetchLike,
+    private readonly sleepFn: SleepFn = realSleep,
+    private readonly baseDelayMs = 500,
   ) {
     this.gov = new RateGovernor(cfg.requestsPerSecond);
   }
 
+  /** Exponential backoff with jitter: baseDelayMs * 2^attempt, plus up to baseDelayMs of jitter. */
+  private backoffDelayMs(attempt: number): number {
+    return this.baseDelayMs * 2 ** attempt + Math.random() * this.baseDelayMs;
+  }
+
+  /** Honors a Retry-After header (seconds) if the response carries one. */
+  private retryAfterMs(res: { headers?: { get(name: string): string | null } }): number | undefined {
+    const raw = res.headers?.get?.("Retry-After");
+    if (!raw) return undefined;
+    const seconds = Number(raw);
+    return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : undefined;
+  }
+
   private async getJson(path: string, params: Record<string, string | number | undefined>): Promise<any> {
-    await this.gov.acquire();
     const qs = Object.entries(params)
       .filter(([, v]) => v !== undefined)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
       .join("&");
     const url = `${this.cfg.kalshiBaseUrl}${path}${qs ? `?${qs}` : ""}`;
-    const res = await this.fetchFn(url);
-    if (!res.ok) throw new Error(`Kalshi ${path} -> HTTP ${res.status}`);
-    return res.json();
+
+    for (let attempt = 0; ; attempt++) {
+      await this.gov.acquire();
+      const isLastAttempt = attempt >= this.maxRetries;
+      let res: Awaited<ReturnType<FetchLike>>;
+      try {
+        res = await this.fetchFn(url);
+      } catch (err) {
+        if (isLastAttempt) throw err;
+        await this.sleepFn(this.backoffDelayMs(attempt));
+        continue;
+      }
+      if (res.ok) return res.json();
+
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || isLastAttempt) throw new Error(`Kalshi ${path} -> HTTP ${res.status}`);
+
+      await this.sleepFn(this.retryAfterMs(res) ?? this.backoffDelayMs(attempt));
+    }
   }
 
   /** period_interval (minutes) defaults to 60 (hourly) — tractable for a retrospective sweep; tunable gate param. */

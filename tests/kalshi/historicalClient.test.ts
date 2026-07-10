@@ -304,6 +304,119 @@ describe("HistoricalClient", () => {
     expect(calls).toBe(1); // page 2 never fetched
   });
 
+  it("retries a 429 once and succeeds on the second attempt", async () => {
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls += 1;
+      if (calls === 1) return { ok: false, status: 429, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ ticker: "M", candlesticks: [] }) };
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+      async () => {}, // no-op sleep -- test stays fast
+      1,
+    );
+    const candles = await client.getCandles("S", "M", 0, 2000);
+    expect(candles).toEqual([]);
+    expect(calls).toBe(2);
+  });
+
+  it("throws after exhausting retries on persistent 429s", async () => {
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls += 1;
+      return { ok: false, status: 429, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+      async () => {},
+      1,
+    );
+    await expect(client.getCandles("S", "M", 0, 2000)).rejects.toThrow(/429/);
+    expect(calls).toBe(5); // maxRetries=4 -> 5 total attempts
+  });
+
+  it("retries a 500 (5xx) response and succeeds once the upstream recovers", async () => {
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls += 1;
+      if (calls <= 2) return { ok: false, status: 503, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ ticker: "M", candlesticks: [] }) };
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+      async () => {},
+      1,
+    );
+    const candles = await client.getCandles("S", "M", 0, 2000);
+    expect(candles).toEqual([]);
+    expect(calls).toBe(3);
+  });
+
+  it("retries a thrown network error and succeeds on a later attempt", async () => {
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("ECONNRESET");
+      return { ok: true, status: 200, json: async () => ({ ticker: "M", candlesticks: [] }) };
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+      async () => {},
+      1,
+    );
+    const candles = await client.getCandles("S", "M", 0, 2000);
+    expect(candles).toEqual([]);
+    expect(calls).toBe(2);
+  });
+
+  it("does not retry a non-retryable 404 (throws immediately, single attempt)", async () => {
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls += 1;
+      return { ok: false, status: 404, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+      async () => {},
+      1,
+    );
+    await expect(client.getCandles("S", "M", 0, 2000)).rejects.toThrow(/404/);
+    expect(calls).toBe(1);
+  });
+
+  it("sleeps for the Retry-After header duration (in ms) instead of the computed backoff", async () => {
+    let calls = 0;
+    const slept: number[] = [];
+    const fetchFn = (async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 429,
+          json: async () => ({}),
+          headers: { get: (name: string) => (name === "Retry-After" ? "2" : null) },
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ ticker: "M", candlesticks: [] }) };
+    }) as unknown as typeof fetch;
+    const client = new HistoricalClient(
+      { kalshiBaseUrl: "https://x/trade-api/v2", cacheDir: ".cache", requestsPerSecond: 1000 },
+      fetchFn,
+      async (ms: number) => {
+        slept.push(ms);
+      },
+      1,
+    );
+    await client.getCandles("S", "M", 0, 2000);
+    expect(slept).toEqual([2000]);
+  });
+
   it("filters listResolvedMarkets by minVolume, keeping only markets at/above the threshold", async () => {
     const fetchFn = fakeFetch({
       "/trade-api/v2/markets": {
