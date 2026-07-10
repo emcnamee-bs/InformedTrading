@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { isViable, DEFAULT_VIABILITY, ViabilityParams } from "../../src/live/viability";
 import { LiveCandidate } from "../../src/live/candidate";
+import { feePerContract } from "../../src/expectancy/fees";
 
 describe("isViable", () => {
   const baseTime = 1000000000; // unix seconds
@@ -21,9 +22,15 @@ describe("isViable", () => {
     ...overrides,
   });
 
-  it("passes for a viable candidate", () => {
-    const candidate = baseLiveCandidate();
+  const netReturn = (entryCents: number): number => {
+    const cost = entryCents / 100 + feePerContract(entryCents);
+    return (1 - cost) / cost;
+  };
+
+  it("passes for a viable candidate with sufficient return", () => {
+    const candidate = baseLiveCandidate({ entryCents: 52 });
     const result = isViable(candidate, baseTime);
+    expect(netReturn(52)).toBeGreaterThan(DEFAULT_VIABILITY.minReturn);
     expect(result.viable).toBe(true);
     expect(result.reason).toBeUndefined();
   });
@@ -65,32 +72,51 @@ describe("isViable", () => {
     expect(result.reason).toBe("beyond horizon");
   });
 
-  it("fails when entry price is below minimum", () => {
-    const candidate = baseLiveCandidate({ entryCents: 4 });
+  it("accepts resolution at exact horizon boundary", () => {
+    const thirtyOneDays = baseTime + 31 * 86400;
+    const candidate = baseLiveCandidate({
+      market: {
+        ...baseLiveCandidate().market,
+        closeTs: thirtyOneDays,
+      },
+    });
     const result = isViable(candidate, baseTime);
-    expect(result.viable).toBe(false);
-    expect(result.reason).toBe("entry price out of range");
+    expect(result.viable).toBe(true);
   });
 
-  it("fails when entry price is above maximum", () => {
-    const candidate = baseLiveCandidate({ entryCents: 96 });
+  it("fails when entry price is 0 (degenerate)", () => {
+    const candidate = baseLiveCandidate({ entryCents: 0 });
     const result = isViable(candidate, baseTime);
     expect(result.viable).toBe(false);
-    expect(result.reason).toBe("entry price out of range");
+    expect(result.reason).toBe("degenerate entry price");
   });
 
-  it("fails when entry price is NaN", () => {
+  it("fails when entry price is 100 (degenerate)", () => {
+    const candidate = baseLiveCandidate({ entryCents: 100 });
+    const result = isViable(candidate, baseTime);
+    expect(result.viable).toBe(false);
+    expect(result.reason).toBe("degenerate entry price");
+  });
+
+  it("fails when entry price is negative (degenerate)", () => {
+    const candidate = baseLiveCandidate({ entryCents: -5 });
+    const result = isViable(candidate, baseTime);
+    expect(result.viable).toBe(false);
+    expect(result.reason).toBe("degenerate entry price");
+  });
+
+  it("fails when entry price is NaN (degenerate)", () => {
     const candidate = baseLiveCandidate({ entryCents: NaN });
     const result = isViable(candidate, baseTime);
     expect(result.viable).toBe(false);
-    expect(result.reason).toBe("entry price out of range");
+    expect(result.reason).toBe("degenerate entry price");
   });
 
-  it("fails when entry price is Infinity", () => {
+  it("fails when entry price is Infinity (degenerate)", () => {
     const candidate = baseLiveCandidate({ entryCents: Infinity });
     const result = isViable(candidate, baseTime);
     expect(result.viable).toBe(false);
-    expect(result.reason).toBe("entry price out of range");
+    expect(result.reason).toBe("degenerate entry price");
   });
 
   it("fails when spread is too wide", () => {
@@ -132,31 +158,6 @@ describe("isViable", () => {
     expect(result.reason).toBe("spread too wide");
   });
 
-  it("respects custom viability params", () => {
-    const customParams: ViabilityParams = {
-      maxHorizonDays: 7,
-      minEntryCents: 10,
-      maxEntryCents: 90,
-      maxSpreadCents: 5,
-    };
-    const candidate = baseLiveCandidate({ entryCents: 9 }); // Below custom min
-    const result = isViable(candidate, baseTime, customParams);
-    expect(result.viable).toBe(false);
-    expect(result.reason).toBe("entry price out of range");
-  });
-
-  it("accepts entry price at exact minimum boundary", () => {
-    const candidate = baseLiveCandidate({ entryCents: 5 });
-    const result = isViable(candidate, baseTime);
-    expect(result.viable).toBe(true);
-  });
-
-  it("accepts entry price at exact maximum boundary", () => {
-    const candidate = baseLiveCandidate({ entryCents: 95 });
-    const result = isViable(candidate, baseTime);
-    expect(result.viable).toBe(true);
-  });
-
   it("accepts spread at exact maximum boundary", () => {
     const candidate = baseLiveCandidate({
       market: {
@@ -169,15 +170,70 @@ describe("isViable", () => {
     expect(result.viable).toBe(true);
   });
 
-  it("accepts resolution at exact horizon boundary", () => {
-    const thirtyOneDays = baseTime + 31 * 86400;
+  it("accepts an entry price of 85c: net-of-fee return is well above the 5% minimum", () => {
+    // cost = 0.85 + feePerContract(85) ~= 0.85 + 0.01 = 0.86 -> ret = (1-0.86)/0.86 ~= 16.3%
     const candidate = baseLiveCandidate({
-      market: {
-        ...baseLiveCandidate().market,
-        closeTs: thirtyOneDays,
-      },
+      market: { ...baseLiveCandidate().market, yesBidCents: 84, yesAskCents: 85 },
+      entryCents: 85,
     });
+    const ret = netReturn(85);
+    expect(ret).toBeGreaterThan(0.05);
     const result = isViable(candidate, baseTime);
+    expect(result.viable).toBe(true);
+  });
+
+  it("rejects an entry price of 98c: net-of-fee return is far below the 5% minimum", () => {
+    const candidate = baseLiveCandidate({
+      market: { ...baseLiveCandidate().market, yesBidCents: 97, yesAskCents: 98 },
+      entryCents: 98,
+    });
+    const ret = netReturn(98);
+    expect(ret).toBeLessThan(0.05);
+    const result = isViable(candidate, baseTime);
+    expect(result.viable).toBe(false);
+    expect(result.reason).toMatch(/^return .* below .*/);
+  });
+
+  it("rejects an entry price just under break-even (96c) as below the return minimum", () => {
+    const candidate = baseLiveCandidate({
+      market: { ...baseLiveCandidate().market, yesBidCents: 95, yesAskCents: 96 },
+      entryCents: 96,
+    });
+    const ret = netReturn(96);
+    expect(ret).toBeLessThan(0.05);
+    const result = isViable(candidate, baseTime);
+    expect(result.viable).toBe(false);
+    expect(result.reason).toMatch(/^return .* below .*/);
+  });
+
+  it("respects a custom (higher) minReturn param", () => {
+    const customParams: ViabilityParams = {
+      maxHorizonDays: 7,
+      minReturn: 0.5, // 50% -- the default-viable 85c candidate (~16% return) no longer clears this
+      maxSpreadCents: 5,
+    };
+    const candidate = baseLiveCandidate({
+      market: { ...baseLiveCandidate().market, yesBidCents: 84, yesAskCents: 85 },
+      entryCents: 85,
+    });
+    expect(netReturn(85)).toBeLessThan(0.5);
+    const result = isViable(candidate, baseTime, customParams);
+    expect(result.viable).toBe(false);
+    expect(result.reason).toMatch(/^return .* below .*/);
+  });
+
+  it("respects a custom (lower) minReturn param that a high entry price now clears", () => {
+    const customParams: ViabilityParams = {
+      maxHorizonDays: 7,
+      minReturn: 0.01, // 1%
+      maxSpreadCents: 5,
+    };
+    const candidate = baseLiveCandidate({
+      market: { ...baseLiveCandidate().market, yesBidCents: 89, yesAskCents: 90 },
+      entryCents: 90,
+    });
+    expect(netReturn(90)).toBeGreaterThan(0.01);
+    const result = isViable(candidate, baseTime, customParams);
     expect(result.viable).toBe(true);
   });
 });

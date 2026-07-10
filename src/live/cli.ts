@@ -13,8 +13,8 @@ export interface CliArgs {
   maxBets: number;
   windowSize: number;
   baselineSize: number;
-  minEntryCents: number | undefined;
-  maxEntryCents: number | undefined;
+  minReturn: number;
+  maxHorizonDays: number;
   maxSpreadCents: number | undefined;
   live: boolean;
   confirm: boolean;
@@ -22,8 +22,8 @@ export interface CliArgs {
 
 const USAGE =
   "usage: npm run probe -- [--min-volume V] [--max-markets N] [--period 1|60|1440] " +
-  "[--max-bets N] [--window N] [--baseline N] [--min-entry N] [--max-entry N] [--max-spread N] " +
-  "[--live --confirm]";
+  "[--max-bets N] [--window N] [--baseline N] [--min-return PCT] [--horizon-days N] " +
+  "[--max-spread N] [--live --confirm]";
 
 export function parseArgs(argv: string[]): CliArgs {
   const get = (flag: string) => {
@@ -67,22 +67,17 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error(`--baseline must be a positive integer, got: ${baselineSizeRaw}\n${USAGE}`);
   }
 
-  const minEntryRaw = get("--min-entry");
-  const minEntryCents = minEntryRaw !== undefined ? Number(minEntryRaw) : undefined;
-  if (
-    minEntryCents !== undefined &&
-    (!Number.isInteger(minEntryCents) || minEntryCents < 1 || minEntryCents > 99)
-  ) {
-    throw new Error(`--min-entry must be an integer between 1 and 99, got: ${minEntryRaw}\n${USAGE}`);
+  const minReturnRaw = get("--min-return");
+  const minReturnPercent = minReturnRaw !== undefined ? Number(minReturnRaw) : 5;
+  if (!Number.isFinite(minReturnPercent) || minReturnPercent < 0) {
+    throw new Error(`--min-return must be a non-negative number (percent), got: ${minReturnRaw}\n${USAGE}`);
   }
+  const minReturn = minReturnPercent / 100;
 
-  const maxEntryRaw = get("--max-entry");
-  const maxEntryCents = maxEntryRaw !== undefined ? Number(maxEntryRaw) : undefined;
-  if (
-    maxEntryCents !== undefined &&
-    (!Number.isInteger(maxEntryCents) || maxEntryCents < 1 || maxEntryCents > 99)
-  ) {
-    throw new Error(`--max-entry must be an integer between 1 and 99, got: ${maxEntryRaw}\n${USAGE}`);
+  const horizonDaysRaw = get("--horizon-days");
+  const maxHorizonDays = horizonDaysRaw !== undefined ? Number(horizonDaysRaw) : 31;
+  if (!Number.isInteger(maxHorizonDays) || maxHorizonDays <= 0) {
+    throw new Error(`--horizon-days must be a positive integer, got: ${horizonDaysRaw}\n${USAGE}`);
   }
 
   const maxSpreadRaw = get("--max-spread");
@@ -98,8 +93,8 @@ export function parseArgs(argv: string[]): CliArgs {
     maxBets,
     windowSize,
     baselineSize,
-    minEntryCents,
-    maxEntryCents,
+    minReturn,
+    maxHorizonDays,
     maxSpreadCents,
     live: argv.includes("--live"),
     confirm: argv.includes("--confirm"),
@@ -216,7 +211,7 @@ async function main() {
   console.error(
     `Run config: minVolume=${args.minVolume} maxMarkets=${args.maxMarkets} period=${args.period}min ` +
       `maxBets=${args.maxBets} window=${args.windowSize} baseline=${args.baselineSize} ` +
-      `minEntry=${args.minEntryCents ?? "default"} maxEntry=${args.maxEntryCents ?? "default"} ` +
+      `minReturn=${(args.minReturn * 100).toFixed(1)}% horizonDays=${args.maxHorizonDays} ` +
       `maxSpread=${args.maxSpreadCents ?? "default"} ` +
       `mode=${willPlaceOrders ? "LIVE" : "DRY-RUN"}`,
   );
@@ -237,8 +232,8 @@ async function main() {
       maxBets: args.maxBets,
       windowSize: args.windowSize,
       baselineSize: args.baselineSize,
-      minEntryCents: args.minEntryCents,
-      maxEntryCents: args.maxEntryCents,
+      minReturn: args.minReturn,
+      maxHorizonDays: args.maxHorizonDays,
       maxSpreadCents: args.maxSpreadCents,
     },
   );

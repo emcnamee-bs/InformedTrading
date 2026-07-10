@@ -14,8 +14,8 @@ describe("parseArgs", () => {
       maxBets: 10,
       windowSize: 3,
       baselineSize: 5,
-      minEntryCents: undefined,
-      maxEntryCents: undefined,
+      minReturn: 0.05,
+      maxHorizonDays: 31,
       maxSpreadCents: undefined,
       live: false,
       confirm: false,
@@ -30,8 +30,8 @@ describe("parseArgs", () => {
       "--max-bets", "3",
       "--window", "24",
       "--baseline", "24",
-      "--min-entry", "2",
-      "--max-entry", "98",
+      "--min-return", "8",
+      "--horizon-days", "14",
       "--max-spread", "15",
       "--live",
       "--confirm",
@@ -43,37 +43,54 @@ describe("parseArgs", () => {
       maxBets: 3,
       windowSize: 24,
       baselineSize: 24,
-      minEntryCents: 2,
-      maxEntryCents: 98,
+      minReturn: 0.08,
+      maxHorizonDays: 14,
       maxSpreadCents: 15,
       live: true,
       confirm: true,
     });
   });
 
-  it("parses --min-entry and --max-entry correctly", () => {
-    const args = parseArgs(["--min-entry", "2", "--max-entry", "98"]);
-    expect(args.minEntryCents).toBe(2);
-    expect(args.maxEntryCents).toBe(98);
+  it("parses --min-return as a percent and stores it as a fraction", () => {
+    const args = parseArgs(["--min-return", "8"]);
+    expect(args.minReturn).toBe(0.08);
   });
 
-  it("defaults --min-entry/--max-entry/--max-spread to undefined when omitted", () => {
+  it("parses --horizon-days correctly", () => {
+    const args = parseArgs(["--horizon-days", "14"]);
+    expect(args.maxHorizonDays).toBe(14);
+  });
+
+  it("defaults --min-return to 5% (0.05) and --horizon-days to 31 when omitted", () => {
     const args = parseArgs([]);
-    expect(args.minEntryCents).toBeUndefined();
-    expect(args.maxEntryCents).toBeUndefined();
+    expect(args.minReturn).toBe(0.05);
+    expect(args.maxHorizonDays).toBe(31);
+  });
+
+  it("defaults --max-spread to undefined when omitted", () => {
+    const args = parseArgs([]);
     expect(args.maxSpreadCents).toBeUndefined();
   });
 
-  it("throws on a --min-entry value of 0 (out of 1..99 range)", () => {
-    expect(() => parseArgs(["--min-entry", "0"])).toThrow(/min-entry/i);
+  it("throws on a negative --min-return value", () => {
+    expect(() => parseArgs(["--min-return", "-1"])).toThrow(/min-return/i);
   });
 
-  it("throws on a --max-entry value of 100 (out of 1..99 range)", () => {
-    expect(() => parseArgs(["--max-entry", "100"])).toThrow(/max-entry/i);
+  it("throws on a non-numeric --min-return value", () => {
+    expect(() => parseArgs(["--min-return", "abc"])).toThrow(/min-return/i);
   });
 
-  it("throws on a non-integer --min-entry value", () => {
-    expect(() => parseArgs(["--min-entry", "2.5"])).toThrow(/min-entry/i);
+  it("accepts a --min-return value of 0", () => {
+    const args = parseArgs(["--min-return", "0"]);
+    expect(args.minReturn).toBe(0);
+  });
+
+  it("throws on a non-positive --horizon-days value", () => {
+    expect(() => parseArgs(["--horizon-days", "0"])).toThrow(/horizon-days/i);
+  });
+
+  it("throws on a non-integer --horizon-days value", () => {
+    expect(() => parseArgs(["--horizon-days", "2.5"])).toThrow(/horizon-days/i);
   });
 
   it("throws on a non-positive --max-spread value", () => {

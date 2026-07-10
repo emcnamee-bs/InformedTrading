@@ -15,7 +15,8 @@ export const HARD_MAX_ORDER_COST_CENTS = 100;
  * Sizes a probe order to ~$1 notional without ever exceeding it: as many contracts as $1 buys
  * at `entryCents`, at least 1. `Math.floor(100 / entryCents)` already satisfies
  * `count*entryCents <= 100` for any entryCents >= 1, so the decrement loop only guards the
- * degenerate entryCents > 100 case (never reached given viability's maxEntryCents <= 95).
+ * degenerate entryCents > 100 case (never reached given viability's degenerate-price guard
+ * rejects entryCents >= 100).
  */
 export function sizeOrder(entryCents: number): { count: number; costCents: number } {
   if (!Number.isFinite(entryCents) || entryCents <= 0) return { count: 0, costCents: 0 };
@@ -47,8 +48,8 @@ export interface ProbeOpts {
   // Individual viability overrides (operator-facing, e.g. via CLI flags) -- when provided,
   // each overrides only that one field of DEFAULT_VIABILITY (see buildViabilityParams below).
   // These are independent of -- and merged on top of -- `viability` above.
-  minEntryCents?: number;
-  maxEntryCents?: number;
+  minReturn?: number;
+  maxHorizonDays?: number;
   maxSpreadCents?: number;
   // Detection window sizing for detectCandidate (see candidate.ts / windows.ts). Optional --
   // defaults (3 / 5) match detectCandidate's own defaults so existing callers/tests are
@@ -60,14 +61,14 @@ export interface ProbeOpts {
 /**
  * Builds the ViabilityParams passed to isViable: starts from `opts.viability` (or
  * DEFAULT_VIABILITY if not given), then layers any individually-provided overrides
- * (minEntryCents/maxEntryCents/maxSpreadCents) on top. Horizon is never overridden here.
+ * (minReturn/maxHorizonDays/maxSpreadCents) on top.
  */
 function buildViabilityParams(opts: ProbeOpts): ViabilityParams {
   return {
     ...DEFAULT_VIABILITY,
     ...opts.viability,
-    ...(opts.minEntryCents !== undefined ? { minEntryCents: opts.minEntryCents } : {}),
-    ...(opts.maxEntryCents !== undefined ? { maxEntryCents: opts.maxEntryCents } : {}),
+    ...(opts.minReturn !== undefined ? { minReturn: opts.minReturn } : {}),
+    ...(opts.maxHorizonDays !== undefined ? { maxHorizonDays: opts.maxHorizonDays } : {}),
     ...(opts.maxSpreadCents !== undefined ? { maxSpreadCents: opts.maxSpreadCents } : {}),
   };
 }
