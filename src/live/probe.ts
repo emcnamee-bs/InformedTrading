@@ -1,6 +1,6 @@
 import { LiveMarket, Candle, Trade } from "../kalshi/types";
 import { LiveCandidate, detectCandidate } from "./candidate";
-import { isViable, ViabilityParams } from "./viability";
+import { isViable, ViabilityParams, DEFAULT_VIABILITY } from "./viability";
 import { Investigator, Investigation, Verdict, keepUnexplained } from "./investigator";
 import { OrderRequest } from "../kalshi/orderClient";
 
@@ -44,11 +44,32 @@ export interface ProbeOpts {
   period: 1 | 60 | 1440;
   maxBets: number;
   viability?: ViabilityParams;
+  // Individual viability overrides (operator-facing, e.g. via CLI flags) -- when provided,
+  // each overrides only that one field of DEFAULT_VIABILITY (see buildViabilityParams below).
+  // These are independent of -- and merged on top of -- `viability` above.
+  minEntryCents?: number;
+  maxEntryCents?: number;
+  maxSpreadCents?: number;
   // Detection window sizing for detectCandidate (see candidate.ts / windows.ts). Optional --
   // defaults (3 / 5) match detectCandidate's own defaults so existing callers/tests are
   // unaffected when these are omitted.
   windowSize?: number;
   baselineSize?: number;
+}
+
+/**
+ * Builds the ViabilityParams passed to isViable: starts from `opts.viability` (or
+ * DEFAULT_VIABILITY if not given), then layers any individually-provided overrides
+ * (minEntryCents/maxEntryCents/maxSpreadCents) on top. Horizon is never overridden here.
+ */
+function buildViabilityParams(opts: ProbeOpts): ViabilityParams {
+  return {
+    ...DEFAULT_VIABILITY,
+    ...opts.viability,
+    ...(opts.minEntryCents !== undefined ? { minEntryCents: opts.minEntryCents } : {}),
+    ...(opts.maxEntryCents !== undefined ? { maxEntryCents: opts.maxEntryCents } : {}),
+    ...(opts.maxSpreadCents !== undefined ? { maxSpreadCents: opts.maxSpreadCents } : {}),
+  };
 }
 
 export interface ProbeCandidate {
@@ -78,6 +99,7 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   const lookbackSec =
     Math.max(windowSize + baselineSize + 5, (windowSize + baselineSize) * 2) * periodMin * 60;
   const endTs = deps.nowTs;
+  const viabilityParams = buildViabilityParams(opts);
 
   const markets = await deps.listOpenMarkets({ minVolume: opts.minVolume, maxMarkets: opts.maxMarkets });
 
@@ -108,7 +130,7 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
       if (!candidate) continue;
       anomaliesDetected++;
 
-      const viability = isViable(candidate, deps.nowTs, opts.viability);
+      const viability = isViable(candidate, deps.nowTs, viabilityParams);
       if (!viability.viable) {
         const reason = viability.reason ?? "unknown";
         viabilityRejectReasons[reason] = (viabilityRejectReasons[reason] ?? 0) + 1;

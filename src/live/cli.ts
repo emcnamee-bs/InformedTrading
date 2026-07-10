@@ -13,13 +13,17 @@ export interface CliArgs {
   maxBets: number;
   windowSize: number;
   baselineSize: number;
+  minEntryCents: number | undefined;
+  maxEntryCents: number | undefined;
+  maxSpreadCents: number | undefined;
   live: boolean;
   confirm: boolean;
 }
 
 const USAGE =
   "usage: npm run probe -- [--min-volume V] [--max-markets N] [--period 1|60|1440] " +
-  "[--max-bets N] [--window N] [--baseline N] [--live --confirm]";
+  "[--max-bets N] [--window N] [--baseline N] [--min-entry N] [--max-entry N] [--max-spread N] " +
+  "[--live --confirm]";
 
 export function parseArgs(argv: string[]): CliArgs {
   const get = (flag: string) => {
@@ -63,6 +67,30 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error(`--baseline must be a positive integer, got: ${baselineSizeRaw}\n${USAGE}`);
   }
 
+  const minEntryRaw = get("--min-entry");
+  const minEntryCents = minEntryRaw !== undefined ? Number(minEntryRaw) : undefined;
+  if (
+    minEntryCents !== undefined &&
+    (!Number.isInteger(minEntryCents) || minEntryCents < 1 || minEntryCents > 99)
+  ) {
+    throw new Error(`--min-entry must be an integer between 1 and 99, got: ${minEntryRaw}\n${USAGE}`);
+  }
+
+  const maxEntryRaw = get("--max-entry");
+  const maxEntryCents = maxEntryRaw !== undefined ? Number(maxEntryRaw) : undefined;
+  if (
+    maxEntryCents !== undefined &&
+    (!Number.isInteger(maxEntryCents) || maxEntryCents < 1 || maxEntryCents > 99)
+  ) {
+    throw new Error(`--max-entry must be an integer between 1 and 99, got: ${maxEntryRaw}\n${USAGE}`);
+  }
+
+  const maxSpreadRaw = get("--max-spread");
+  const maxSpreadCents = maxSpreadRaw !== undefined ? Number(maxSpreadRaw) : undefined;
+  if (maxSpreadCents !== undefined && (!Number.isInteger(maxSpreadCents) || maxSpreadCents < 1)) {
+    throw new Error(`--max-spread must be a positive integer, got: ${maxSpreadRaw}\n${USAGE}`);
+  }
+
   return {
     minVolume,
     maxMarkets,
@@ -70,6 +98,9 @@ export function parseArgs(argv: string[]): CliArgs {
     maxBets,
     windowSize,
     baselineSize,
+    minEntryCents,
+    maxEntryCents,
+    maxSpreadCents,
     live: argv.includes("--live"),
     confirm: argv.includes("--confirm"),
   };
@@ -185,6 +216,8 @@ async function main() {
   console.error(
     `Run config: minVolume=${args.minVolume} maxMarkets=${args.maxMarkets} period=${args.period}min ` +
       `maxBets=${args.maxBets} window=${args.windowSize} baseline=${args.baselineSize} ` +
+      `minEntry=${args.minEntryCents ?? "default"} maxEntry=${args.maxEntryCents ?? "default"} ` +
+      `maxSpread=${args.maxSpreadCents ?? "default"} ` +
       `mode=${willPlaceOrders ? "LIVE" : "DRY-RUN"}`,
   );
 
@@ -204,6 +237,9 @@ async function main() {
       maxBets: args.maxBets,
       windowSize: args.windowSize,
       baselineSize: args.baselineSize,
+      minEntryCents: args.minEntryCents,
+      maxEntryCents: args.maxEntryCents,
+      maxSpreadCents: args.maxSpreadCents,
     },
   );
 

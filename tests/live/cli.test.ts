@@ -14,6 +14,9 @@ describe("parseArgs", () => {
       maxBets: 10,
       windowSize: 3,
       baselineSize: 5,
+      minEntryCents: undefined,
+      maxEntryCents: undefined,
+      maxSpreadCents: undefined,
       live: false,
       confirm: false,
     });
@@ -27,6 +30,9 @@ describe("parseArgs", () => {
       "--max-bets", "3",
       "--window", "24",
       "--baseline", "24",
+      "--min-entry", "2",
+      "--max-entry", "98",
+      "--max-spread", "15",
       "--live",
       "--confirm",
     ]);
@@ -37,9 +43,41 @@ describe("parseArgs", () => {
       maxBets: 3,
       windowSize: 24,
       baselineSize: 24,
+      minEntryCents: 2,
+      maxEntryCents: 98,
+      maxSpreadCents: 15,
       live: true,
       confirm: true,
     });
+  });
+
+  it("parses --min-entry and --max-entry correctly", () => {
+    const args = parseArgs(["--min-entry", "2", "--max-entry", "98"]);
+    expect(args.minEntryCents).toBe(2);
+    expect(args.maxEntryCents).toBe(98);
+  });
+
+  it("defaults --min-entry/--max-entry/--max-spread to undefined when omitted", () => {
+    const args = parseArgs([]);
+    expect(args.minEntryCents).toBeUndefined();
+    expect(args.maxEntryCents).toBeUndefined();
+    expect(args.maxSpreadCents).toBeUndefined();
+  });
+
+  it("throws on a --min-entry value of 0 (out of 1..99 range)", () => {
+    expect(() => parseArgs(["--min-entry", "0"])).toThrow(/min-entry/i);
+  });
+
+  it("throws on a --max-entry value of 100 (out of 1..99 range)", () => {
+    expect(() => parseArgs(["--max-entry", "100"])).toThrow(/max-entry/i);
+  });
+
+  it("throws on a non-integer --min-entry value", () => {
+    expect(() => parseArgs(["--min-entry", "2.5"])).toThrow(/min-entry/i);
+  });
+
+  it("throws on a non-positive --max-spread value", () => {
+    expect(() => parseArgs(["--max-spread", "0"])).toThrow(/max-spread/i);
   });
 
   it("--window and --baseline default to 3 and 5 when omitted", () => {
