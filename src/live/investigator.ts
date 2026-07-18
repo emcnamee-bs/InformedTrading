@@ -20,14 +20,6 @@ export interface Investigator {
 }
 
 /**
- * Filter policy: keep only clearly-unexplained candidates for trading.
- * EXPLAINED and AMBIGUOUS verdicts are filtered out.
- */
-export function keepUnexplained(inv: Investigation): boolean {
-  return inv.verdict === "UNEXPLAINED";
-}
-
-/**
  * Follow policy: keep a candidate to bet only when the flagged move is genuinely unexplained AND
  * public information does not point the OPPOSITE way (don't follow a flag public info makes likely
  * to lose) AND the resolving event has not already happened. Missing publicLean/eventStatus (e.g.

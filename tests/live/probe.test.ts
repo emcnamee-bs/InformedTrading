@@ -126,7 +126,7 @@ function alwaysUnexplained(seen: string[] = []): Investigator {
   return {
     async investigate(c) {
       seen.push(c.market.marketTicker);
-      return { verdict: "UNEXPLAINED", rationale: `unexplained: ${c.market.marketTicker}`, sources: ["src"] };
+      return { verdict: "UNEXPLAINED", publicLean: "silent", eventStatus: "upcoming", rationale: `unexplained: ${c.market.marketTicker}`, sources: ["src"] };
     },
   };
 }
@@ -186,7 +186,7 @@ describe("planProbe", () => {
     expect(seen).toEqual([okTicker]); // investigator never called for the unviable market
   });
 
-  it("filters out EXPLAINED/AMBIGUOUS verdicts via keepUnexplained", async () => {
+  it("filters out EXPLAINED/AMBIGUOUS verdicts via keepCandidate", async () => {
     const explainedTicker = "MKT-EXPLAINED";
     const unexplainedTicker = "MKT-UNEXPLAINED";
     const markets = [makeMarket(explainedTicker), makeMarket(unexplainedTicker)];
@@ -197,7 +197,7 @@ describe("planProbe", () => {
     const investigator: Investigator = {
       async investigate(c): Promise<Investigation> {
         const verdict: Verdict = c.market.marketTicker === explainedTicker ? "EXPLAINED" : "UNEXPLAINED";
-        return { verdict, rationale: "r", sources: [] };
+        return { verdict, publicLean: "silent", eventStatus: "upcoming", rationale: "r", sources: [] };
       },
     };
     const deps = makeDeps(markets, dataByTicker, investigator);
@@ -246,7 +246,7 @@ describe("planProbe", () => {
 
     expect(plan.map((p) => p.candidate.market.marketTicker)).toEqual([goodTicker]);
     expect(errSpy.mock.calls.some((c) => String(c[0]).includes(`skip ${badTicker}`))).toBe(true);
-    expect(errSpy.mock.calls.some((c) => String(c[0]).includes("1 analyzed, 0 insufficient-history, 1 errors"))).toBe(true);
+    expect(errSpy.mock.calls.some((c) => String(c[0]).includes("1 analyzed, 0 past-event, 0 insufficient-history, 1 errors"))).toBe(true);
     errSpy.mockRestore();
   });
 
@@ -436,6 +436,41 @@ describe("planProbe funnel instrumentation", () => {
     expect(funnel).toContain("universe=2");
     expect(funnel).toContain("insufficientHistory=1");
     expect(funnel).toContain("analyzed=1");
+  });
+});
+
+describe("planProbe candidate-quality filters", () => {
+  it("skips a past-event market before fetching candles and counts it as pastEvent", async () => {
+    // ticker date 26JAN01 is strictly before NOW_TS's date, so it must be skipped.
+    const past = makeMarket("KXX-26JAN01-A");
+    let fetched = false;
+    const deps: ProbeDeps = {
+      listOpenMarkets: async () => [past],
+      getCandles: async () => { fetched = true; return []; },
+      getTrades: async () => { fetched = true; return []; },
+      investigator: alwaysUnexplained(),
+      nowTs: NOW_TS,
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const plan = await planProbe(deps, baseOpts);
+    const funnel = spy.mock.calls.map((c) => c.join(" ")).find((s) => s.includes("Funnel:")) ?? "";
+    spy.mockRestore();
+    expect(fetched).toBe(false);
+    expect(plan).toHaveLength(0);
+    expect(funnel).toContain("pastEvent=1");
+  });
+
+  it("drops an UNEXPLAINED candidate whose public info leans opposite", async () => {
+    // NOW_TS (1_800_000_000) is ~Jan 2027, so use a clearly-future date so the pre-filter keeps it.
+    const markets = [makeMarket("KXX-27DEC31-A")];
+    const data = new Map([["KXX-27DEC31-A", buildSurgeData("KXX-27DEC31-A", 1.0)]]);
+    const opposite: Investigator = {
+      async investigate(c) {
+        return { verdict: "UNEXPLAINED", publicLean: "opposite", eventStatus: "upcoming", rationale: "", sources: [] };
+      },
+    };
+    const plan = await planProbe(makeDeps(markets, data, opposite), baseOpts);
+    expect(plan).toHaveLength(0);
   });
 });
 

@@ -1,7 +1,8 @@
 import { LiveMarket, Candle, Trade } from "../kalshi/types";
 import { LiveCandidate, detectCandidate } from "./candidate";
 import { isViable, ViabilityParams, DEFAULT_VIABILITY } from "./viability";
-import { Investigator, Investigation, Verdict, keepUnexplained } from "./investigator";
+import { Investigator, Investigation, Verdict, keepCandidate } from "./investigator";
+import { isEventPast } from "./eventDate";
 import { OrderRequest } from "../kalshi/orderClient";
 
 // Hard safety caps for the live probe. These are NOT tuning knobs -- they bound real-money
@@ -128,6 +129,7 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   const kept: { candidate: LiveCandidate; investigation: Investigation }[] = [];
   let errors = 0;
   let insufficientHistory = 0;
+  let pastEvent = 0;
   const candleCounts: number[] = [];
 
   // Funnel diagnostics only -- these counters do not influence which candidates are kept
@@ -142,6 +144,10 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   // persistent 429 after retries) skips that one market and continues the scan rather than
   // aborting the whole plan via an unguarded Promise.all.
   for (const market of markets) {
+    if (isEventPast(market.marketTicker, deps.nowTs)) {
+      pastEvent++;
+      continue;
+    }
     try {
       // Never request candles/trades from before the market existed -- clamp per-market.
       const startTs = Math.max(endTs - lookbackSec, market.openTs);
@@ -174,7 +180,7 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
       console.error(
         `investigate ${candidate.market.marketTicker} dir=${candidate.direction} entry=${candidate.entryCents} -> ${investigation.verdict}`,
       );
-      if (!keepUnexplained(investigation)) continue;
+      if (!keepCandidate(investigation)) continue;
 
       kept.push({ candidate, investigation });
     } catch (err) {
@@ -184,9 +190,9 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
     }
   }
 
-  const analyzed = markets.length - errors - insufficientHistory;
+  const analyzed = markets.length - pastEvent - errors - insufficientHistory;
   console.error(
-    `Probe scan summary: ${analyzed} analyzed, ${insufficientHistory} insufficient-history, ${errors} errors (of ${markets.length} total)`,
+    `Probe scan summary: ${analyzed} analyzed, ${pastEvent} past-event, ${insufficientHistory} insufficient-history, ${errors} errors (of ${markets.length} total)`,
   );
 
   kept.sort((a, b) => b.candidate.anomalyScore - a.candidate.anomalyScore);
@@ -195,7 +201,7 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
 
   const stats = candleStats(candleCounts);
   console.error(
-    `Funnel: universe=${markets.length} | errors=${errors} insufficientHistory=${insufficientHistory} analyzed=${analyzed} | ` +
+    `Funnel: universe=${markets.length} | pastEvent=${pastEvent} errors=${errors} insufficientHistory=${insufficientHistory} analyzed=${analyzed} | ` +
       `anomalies=${anomaliesDetected} viable=${viableCount} investigated=${investigatedCount} | ` +
       `verdicts EXPLAINED=${verdictCounts.EXPLAINED} UNEXPLAINED=${verdictCounts.UNEXPLAINED} AMBIGUOUS=${verdictCounts.AMBIGUOUS} | kept=${top.length}`,
   );
