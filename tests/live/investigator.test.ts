@@ -4,6 +4,7 @@ import {
   Investigator,
   Verdict,
   keepUnexplained,
+  keepCandidate,
 } from "../../src/live/investigator";
 import { LiveCandidate } from "../../src/live/candidate";
 
@@ -85,5 +86,25 @@ describe("Investigator interface", () => {
     expect(keepUnexplained(unexplainedResult)).toBe(true);
     expect(keepUnexplained(explainedResult)).toBe(false);
     expect(keepUnexplained(ambiguousResult)).toBe(false);
+  });
+});
+
+describe("keepCandidate", () => {
+  const base: Investigation = { verdict: "UNEXPLAINED", publicLean: "silent", eventStatus: "upcoming", rationale: "", sources: [] };
+  it("keeps UNEXPLAINED + silent + not-past", () => {
+    expect(keepCandidate(base)).toBe(true);
+  });
+  it("drops when public info leans opposite the flag", () => {
+    expect(keepCandidate({ ...base, publicLean: "opposite" })).toBe(false);
+  });
+  it("drops when the event already happened", () => {
+    expect(keepCandidate({ ...base, eventStatus: "past" })).toBe(false);
+  });
+  it("drops when publicLean is missing (fail-safe default)", () => {
+    expect(keepCandidate({ verdict: "UNEXPLAINED", rationale: "", sources: [] })).toBe(false);
+  });
+  it("drops EXPLAINED and AMBIGUOUS regardless", () => {
+    expect(keepCandidate({ ...base, verdict: "EXPLAINED" })).toBe(false);
+    expect(keepCandidate({ ...base, verdict: "AMBIGUOUS" })).toBe(false);
   });
 });
