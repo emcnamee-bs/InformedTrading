@@ -6,3 +6,5 @@ dist
 # Kalshi credentials — NEVER commit
 *.pem
 kalshi_key.pem
+# Reference textbooks/PDFs (439 MB) — never commit
+Context Dump/

@@ -1,0 +1,121 @@
+{
+  "cutoff_ts": 1783108800,
+  "cutoff_iso": "2026-07-03T20:00:00Z (noon PST)",
+  "event": "KXLIUSAELIMINATIONW-26JUL03",
+  "snapshot": [
+    {
+      "name": "Gal",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-GAL",
+      "price_at_cutoff": 94,
+      "cum_volume_to_cutoff": 99246
+    },
+    {
+      "name": "Amora",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-AMO",
+      "price_at_cutoff": 93,
+      "cum_volume_to_cutoff": 57582
+    },
+    {
+      "name": "Jaiden",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-JAI",
+      "price_at_cutoff": 92,
+      "cum_volume_to_cutoff": 71202
+    },
+    {
+      "name": "Jen",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-JEN",
+      "price_at_cutoff": 91,
+      "cum_volume_to_cutoff": 68120
+    },
+    {
+      "name": "Caleb",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-CAL",
+      "price_at_cutoff": 86,
+      "cum_volume_to_cutoff": 133006
+    },
+    {
+      "name": "Kenzie",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-KEN",
+      "price_at_cutoff": 7,
+      "cum_volume_to_cutoff": 104407
+    },
+    {
+      "name": "Dylan",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-DYL",
+      "price_at_cutoff": 4,
+      "cum_volume_to_cutoff": 61167
+    },
+    {
+      "name": "Sincere",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-SIN",
+      "price_at_cutoff": 3,
+      "cum_volume_to_cutoff": 99448
+    },
+    {
+      "name": "Parmida",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-PAR",
+      "price_at_cutoff": 2,
+      "cum_volume_to_cutoff": 37285
+    },
+    {
+      "name": "Corbin",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-COR",
+      "price_at_cutoff": 2,
+      "cum_volume_to_cutoff": 36842
+    },
+    {
+      "name": "Melanie",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-MEL",
+      "price_at_cutoff": 2,
+      "cum_volume_to_cutoff": 41858
+    },
+    {
+      "name": "Carl",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-CAR",
+      "price_at_cutoff": 2,
+      "cum_volume_to_cutoff": 3714
+    },
+    {
+      "name": "Aniya",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-ANI",
+      "price_at_cutoff": 2,
+      "cum_volume_to_cutoff": 25844
+    },
+    {
+      "name": "Tierra",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-TIE",
+      "price_at_cutoff": 2,
+      "cum_volume_to_cutoff": 50518
+    },
+    {
+      "name": "Bryce",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-BRY",
+      "price_at_cutoff": 1,
+      "cum_volume_to_cutoff": 7173
+    },
+    {
+      "name": "Trinity",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-TRI",
+      "price_at_cutoff": 1,
+      "cum_volume_to_cutoff": 7992
+    },
+    {
+      "name": "Kayda",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-KAY",
+      "price_at_cutoff": 1,
+      "cum_volume_to_cutoff": 2402
+    },
+    {
+      "name": "Zach",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-ZAC",
+      "price_at_cutoff": 1,
+      "cum_volume_to_cutoff": 18980
+    },
+    {
+      "name": "KC",
+      "ticker": "KXLIUSAELIMINATIONW-26JUL03-KCC",
+      "price_at_cutoff": 1,
+      "cum_volume_to_cutoff": 57465
+    }
+  ]
+}
