@@ -25,6 +25,16 @@ export function sizeOrder(entryCents: number): { count: number; costCents: numbe
   return { count, costCents: count * entryCents };
 }
 
+/** min / median / max of a numeric array; zeros for an empty array. Median rounded to an int. */
+export function candleStats(counts: number[]): { min: number; median: number; max: number } {
+  if (counts.length === 0) return { min: 0, median: 0, max: 0 };
+  const sorted = [...counts].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0 ? Math.round((sorted[mid - 1]! + sorted[mid]!) / 2) : sorted[mid]!;
+  return { min: sorted[0]!, median, max: sorted[sorted.length - 1]! };
+}
+
 export interface ProbeDeps {
   listOpenMarkets: (opts: {
     minVolume?: number;
@@ -116,7 +126,9 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   });
 
   const kept: { candidate: LiveCandidate; investigation: Investigation }[] = [];
-  let skipped = 0;
+  let errors = 0;
+  let insufficientHistory = 0;
+  const candleCounts: number[] = [];
 
   // Funnel diagnostics only -- these counters do not influence which candidates are kept
   // or how they're ranked/sized; they exist purely to log where candidates drop off.
@@ -137,6 +149,12 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
         deps.getCandles(market.seriesTicker, market.marketTicker, startTs, endTs, opts.period),
         deps.getTrades(market.marketTicker, startTs, endTs),
       ]);
+
+      candleCounts.push(candles.length);
+      if (candles.length < windowSize + baselineSize) {
+        insufficientHistory++;
+        continue;
+      }
 
       const candidate = detectCandidate(market, candles, trades, opts.windowSize, opts.baselineSize);
       if (!candidate) continue;
@@ -160,22 +178,28 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
 
       kept.push({ candidate, investigation });
     } catch (err) {
-      skipped++;
+      errors++;
       console.error(`skip ${market.marketTicker}: ${err instanceof Error ? err.message : String(err)}`);
       continue;
     }
   }
 
-  console.error(`Probe scan summary: ${markets.length - skipped} scanned, ${skipped} skipped (of ${markets.length} total)`);
+  const analyzed = markets.length - errors - insufficientHistory;
+  console.error(
+    `Probe scan summary: ${analyzed} analyzed, ${insufficientHistory} insufficient-history, ${errors} errors (of ${markets.length} total)`,
+  );
 
   kept.sort((a, b) => b.candidate.anomalyScore - a.candidate.anomalyScore);
   const maxBets = Math.min(opts.maxBets ?? HARD_MAX_ORDERS, HARD_MAX_ORDERS);
   const top = kept.slice(0, maxBets);
 
+  const stats = candleStats(candleCounts);
   console.error(
-    `Funnel: scanned=${markets.length - skipped} skipped=${skipped} | anomalies=${anomaliesDetected} viable=${viableCount} investigated=${investigatedCount} | ` +
+    `Funnel: universe=${markets.length} | errors=${errors} insufficientHistory=${insufficientHistory} analyzed=${analyzed} | ` +
+      `anomalies=${anomaliesDetected} viable=${viableCount} investigated=${investigatedCount} | ` +
       `verdicts EXPLAINED=${verdictCounts.EXPLAINED} UNEXPLAINED=${verdictCounts.UNEXPLAINED} AMBIGUOUS=${verdictCounts.AMBIGUOUS} | kept=${top.length}`,
   );
+  console.error(`candles/market: min=${stats.min} median=${stats.median} max=${stats.max}`);
   if (Object.keys(viabilityRejectReasons).length > 0) {
     const breakdown = Object.entries(viabilityRejectReasons)
       .map(([reason, count]) => `${reason}=${count}`)
