@@ -185,7 +185,7 @@ export function loadTradingCredentials(env: NodeJS.ProcessEnv = process.env): { 
 
 /**
  * Placeholder investigator standing in for the real Claude-backed one (Task 5, built later per
- * the plan's recommended sequence). Always returns AMBIGUOUS so `keepUnexplained` filters it
+ * the plan's recommended sequence). Always returns AMBIGUOUS so `keepCandidate` filters it
  * out -- the dry-run pipeline runs end-to-end but never plans a bet until Task 5 wires in the
  * real investigator (swap the `investigator` field in main() below).
  */

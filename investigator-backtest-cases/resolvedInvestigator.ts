@@ -62,9 +62,16 @@ export function buildCasePrompt(caseDir: string): string {
     dossier,
     `================== END PRE-CUTOFF DOSSIER ==================`,
     ``,
+    `Also report, separately from the verdict:`,
+    `- "publicLean": "same" if public information points the SAME way as the flagged direction, ` +
+      `"opposite" if public information points the OPPOSITE way (it makes the flagged side the less ` +
+      `likely outcome), or "silent" if public information says nothing specific about the flagged direction.`,
+    `- "eventStatus": "past" if the event this market resolves on has already occurred, "upcoming" ` +
+      `if it has not yet occurred, or "unknown" if you cannot tell.`,
+    ``,
     `After your reasoning, end your reply with a single JSON object on its own line, and nothing after`,
     `it, in exactly this shape (no markdown fencing):`,
-    `{"verdict":"EXPLAINED"|"UNEXPLAINED"|"AMBIGUOUS","rationale":"...","sources":["dossier section or fact you relied on", ...]}`,
+    `{"verdict":"EXPLAINED"|"UNEXPLAINED"|"AMBIGUOUS","publicLean":"same"|"opposite"|"silent","eventStatus":"past"|"upcoming"|"unknown","rationale":"...","sources":["dossier section or fact you relied on", ...]}`,
   ].join("\n");
 }
 

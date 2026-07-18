@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { LiveCandidate } from "./candidate";
-import { Investigation, Investigator, Verdict } from "./investigator";
+import { Investigation, Investigator, Verdict, PublicLean, EventStatus } from "./investigator";
 
 const DEFAULT_MODEL = "claude-opus-4-8";
 const MAX_TOKENS = 4096;
@@ -15,6 +15,8 @@ const INVESTIGATOR_TIMEOUT_MS = 90_000;
 /** Structured result an investigation runner must produce. */
 export interface RunnerResult {
   verdict: Verdict;
+  publicLean?: PublicLean;
+  eventStatus?: EventStatus;
   rationale: string;
   sources: string[];
 }
@@ -40,6 +42,13 @@ const FAIL_SAFE_RUNNER_ERROR: Investigation = {
 
 function isVerdict(value: unknown): value is Verdict {
   return value === "EXPLAINED" || value === "UNEXPLAINED" || value === "AMBIGUOUS";
+}
+
+function isPublicLean(v: unknown): v is PublicLean {
+  return v === "same" || v === "opposite" || v === "silent";
+}
+function isEventStatus(v: unknown): v is EventStatus {
+  return v === "past" || v === "upcoming" || v === "unknown";
 }
 
 /**
@@ -75,9 +84,16 @@ export function buildPrompt(candidate: LiveCandidate): string {
       `explains the volume but NOT the flagged direction/concentration.`,
     `- AMBIGUOUS: the evidence on the flagged pattern itself is genuinely weak/partial.`,
     ``,
+    `Also report, separately from the verdict:`,
+    `- "publicLean": "same" if public information points the SAME way as the flagged direction, ` +
+      `"opposite" if public information points the OPPOSITE way (it makes the flagged side the less ` +
+      `likely outcome), or "silent" if public information says nothing specific about the flagged direction.`,
+    `- "eventStatus": "past" if the event this market resolves on has already occurred, "upcoming" ` +
+      `if it has not yet occurred, or "unknown" if you cannot tell.`,
+    ``,
     `After your reasoning and any searches, end your reply with a single JSON object on its own line, ` +
       `and nothing after it, in exactly this shape (no markdown fencing):`,
-    `{"verdict":"EXPLAINED"|"UNEXPLAINED"|"AMBIGUOUS","rationale":"...","sources":["url", ...]}`,
+    `{"verdict":"EXPLAINED"|"UNEXPLAINED"|"AMBIGUOUS","publicLean":"same"|"opposite"|"silent","eventStatus":"past"|"upcoming"|"unknown","rationale":"...","sources":["url", ...]}`,
   ].join("\n");
 }
 
@@ -94,6 +110,28 @@ export function extractLastJsonObject(text: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse the model's trailing JSON into a RunnerResult. Throws if no valid verdict is present
+ * (the caller fails safe to AMBIGUOUS). publicLean/eventStatus are optional: invalid/missing
+ * values become undefined, which keepCandidate treats as not-followable.
+ */
+export function parseRunnerResult(text: string): RunnerResult {
+  const parsed = extractLastJsonObject(text);
+  if (!parsed || typeof parsed !== "object" || !isVerdict((parsed as Record<string, unknown>).verdict)) {
+    throw new Error("investigator response did not contain a valid structured verdict");
+  }
+  const obj = parsed as {
+    verdict: Verdict; publicLean?: unknown; eventStatus?: unknown; rationale?: unknown; sources?: unknown;
+  };
+  return {
+    verdict: obj.verdict,
+    publicLean: isPublicLean(obj.publicLean) ? obj.publicLean : undefined,
+    eventStatus: isEventStatus(obj.eventStatus) ? obj.eventStatus : undefined,
+    rationale: typeof obj.rationale === "string" ? obj.rationale : "",
+    sources: Array.isArray(obj.sources) ? obj.sources.filter((s): s is string => typeof s === "string") : [],
+  };
 }
 
 /**
@@ -121,20 +159,7 @@ export function makeDefaultRunner(model = process.env.CLAUDE_INVESTIGATOR_MODEL?
       .map((block) => block.text)
       .join("\n");
 
-    const parsed = extractLastJsonObject(text);
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      !isVerdict((parsed as Record<string, unknown>).verdict)
-    ) {
-      throw new Error("investigator response did not contain a valid structured verdict");
-    }
-    const obj = parsed as { verdict: Verdict; rationale?: unknown; sources?: unknown };
-    return {
-      verdict: obj.verdict,
-      rationale: typeof obj.rationale === "string" ? obj.rationale : "",
-      sources: Array.isArray(obj.sources) ? obj.sources.filter((s): s is string => typeof s === "string") : [],
-    };
+    return parseRunnerResult(text);
   };
 }
 
@@ -142,8 +167,8 @@ export function makeDefaultRunner(model = process.env.CLAUDE_INVESTIGATOR_MODEL?
  * Claude-backed explain-away investigator. Judges whether a live-market anomaly has a public
  * explanation by delegating to an injectable `runner` (default: a real Anthropic SDK call with
  * server-side web search). Fails safe to AMBIGUOUS -- never UNEXPLAINED -- on any runner error or
- * malformed/unparseable output, since `keepUnexplained` (see ./investigator) only keeps
- * UNEXPLAINED verdicts for betting.
+ * malformed/unparseable output, since `keepCandidate` (see ./investigator) only keeps
+ * followable UNEXPLAINED verdicts for betting.
  */
 export class ClaudeInvestigator implements Investigator {
   private readonly runner: InvestigateRunner;
@@ -166,6 +191,8 @@ export class ClaudeInvestigator implements Investigator {
 
     return {
       verdict: result.verdict,
+      publicLean: isPublicLean(result.publicLean) ? result.publicLean : undefined,
+      eventStatus: isEventStatus(result.eventStatus) ? result.eventStatus : undefined,
       rationale: typeof result.rationale === "string" ? result.rationale : "",
       sources: Array.isArray(result.sources) ? result.sources.filter((s): s is string => typeof s === "string") : [],
     };
