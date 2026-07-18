@@ -21,9 +21,11 @@ export interface Investigator {
 
 /**
  * Follow policy: keep a candidate to bet only when the flagged move is genuinely unexplained AND
- * public information does not point the OPPOSITE way (don't follow a flag public info makes likely
- * to lose) AND the resolving event has not already happened. Missing publicLean/eventStatus (e.g.
- * fail-safe investigations) are treated as not-followable.
+ * public information is SILENT on the flagged direction (both "same" and "opposite" are dropped --
+ * "same" means public info already accounts for the move, so it's not a genuine information-edge
+ * signal, and "opposite" means public info makes the flagged side the less likely outcome) AND the
+ * resolving event has not already happened. Missing publicLean/eventStatus (e.g. fail-safe
+ * investigations) are treated as not-followable.
  */
 export function keepCandidate(inv: Investigation): boolean {
   return inv.verdict === "UNEXPLAINED" && inv.publicLean === "silent" && inv.eventStatus !== "past";

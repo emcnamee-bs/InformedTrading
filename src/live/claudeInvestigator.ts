@@ -191,8 +191,8 @@ export class ClaudeInvestigator implements Investigator {
 
     return {
       verdict: result.verdict,
-      publicLean: result.publicLean,
-      eventStatus: result.eventStatus,
+      publicLean: isPublicLean(result.publicLean) ? result.publicLean : undefined,
+      eventStatus: isEventStatus(result.eventStatus) ? result.eventStatus : undefined,
       rationale: typeof result.rationale === "string" ? result.rationale : "",
       sources: Array.isArray(result.sources) ? result.sources.filter((s): s is string => typeof s === "string") : [],
     };

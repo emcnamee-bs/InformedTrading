@@ -15,13 +15,18 @@ export function parseEventDate(ticker: string): Date | null {
   if (!m) return null;
   const month = MONTHS[m[2]!];
   if (month === undefined) return null;
-  return new Date(Date.UTC(2000 + Number(m[1]), month, Number(m[3])));
+  const day = Number(m[3]);
+  if (day < 1 || day > 31) return null;
+  return new Date(Date.UTC(2000 + Number(m[1]), month, day));
 }
 
 /**
  * True only when the ticker's event date is STRICTLY before today's UTC date. Same-day (the event
  * may still be later today), future, or unparseable tickers return false (keep; the investigator
  * `eventStatus` field is the backstop for unparseable past events). `nowTs` is unix seconds.
+ * Note: "today" here is computed in UTC while Kalshi events resolve in ET, so near the 00:00-05:00
+ * UTC boundary a market may be skipped a few hours early -- accepted because it only ever causes a
+ * safe skip (never a bet).
  */
 export function isEventPast(ticker: string, nowTs: number): boolean {
   const eventDate = parseEventDate(ticker);

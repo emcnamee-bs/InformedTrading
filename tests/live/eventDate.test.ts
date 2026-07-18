@@ -14,6 +14,9 @@ describe("parseEventDate", () => {
   it("returns null for an invalid month token", () => {
     expect(parseEventDate("KXX-26XYZ16-A")).toBeNull();
   });
+  it("returns null for an out-of-range day (00)", () => {
+    expect(parseEventDate("KXX-26JUL00-A")).toBeNull();
+  });
 });
 
 describe("isEventPast", () => {
