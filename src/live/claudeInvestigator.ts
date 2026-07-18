@@ -167,8 +167,8 @@ export function makeDefaultRunner(model = process.env.CLAUDE_INVESTIGATOR_MODEL?
  * Claude-backed explain-away investigator. Judges whether a live-market anomaly has a public
  * explanation by delegating to an injectable `runner` (default: a real Anthropic SDK call with
  * server-side web search). Fails safe to AMBIGUOUS -- never UNEXPLAINED -- on any runner error or
- * malformed/unparseable output, since `keepUnexplained` (see ./investigator) only keeps
- * UNEXPLAINED verdicts for betting.
+ * malformed/unparseable output, since `keepCandidate` (see ./investigator) only keeps
+ * followable UNEXPLAINED verdicts for betting.
  */
 export class ClaudeInvestigator implements Investigator {
   private readonly runner: InvestigateRunner;
