@@ -3,7 +3,7 @@ import { LiveCandidate } from "./candidate";
 import { Investigation, Investigator, Verdict } from "./investigator";
 
 const DEFAULT_MODEL = "claude-opus-4-8";
-const MAX_TOKENS = 2048;
+const MAX_TOKENS = 4096;
 
 // Per-investigation wall-clock cap. A web_search call runs several server-side search
 // rounds and can occasionally hang; without a bound, one stuck investigation freezes the
@@ -59,9 +59,21 @@ export function buildPrompt(candidate: LiveCandidate): string {
       `data release, a regulatory filing, etc -- published recently that would plausibly explain a sudden ` +
       `price move in this market right now.`,
     ``,
-    `- If you find a clear public catalyst, the verdict is EXPLAINED.`,
-    `- If a thorough search turns up nothing that explains the move, the verdict is UNEXPLAINED.`,
-    `- If the evidence is weak, partial, or you are genuinely uncertain, the verdict is AMBIGUOUS.`,
+    `Separate the FLAGGED signal from surrounding market activity. A public catalyst that explains the ` +
+      `overall volume, or a price move in ONE direction, does NOT by itself explain a flagged position ` +
+      `whose direction, one-sidedness, or timing runs OPPOSITE to -- or is simply unsupported by -- that ` +
+      `public information. Judge whether the SPECIFIC flagged pattern (its direction and concentration), ` +
+      `not merely the surrounding activity, is accounted for by public information.`,
+    ``,
+    `Assess it outcome by outcome, concentrating on the HIGHEST-CONVICTION outcomes (priced nearest ` +
+      `certain). A public explanation for some outcomes does not offset the absence of one for the ` +
+      `highest-conviction outcomes; if even one near-certain outcome has no specific public basis, the ` +
+      `concentration is not fully accounted for.`,
+    ``,
+    `- EXPLAINED: a public catalyst specifically accounts for the flagged pattern (its direction included).`,
+    `- UNEXPLAINED: nothing public accounts for the flagged pattern -- including cases where public info ` +
+      `explains the volume but NOT the flagged direction/concentration.`,
+    `- AMBIGUOUS: the evidence on the flagged pattern itself is genuinely weak/partial.`,
     ``,
     `After your reasoning and any searches, end your reply with a single JSON object on its own line, ` +
       `and nothing after it, in exactly this shape (no markdown fencing):`,

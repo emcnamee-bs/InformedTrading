@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ClaudeInvestigator } from "../../src/live/claudeInvestigator";
+import { ClaudeInvestigator, buildPrompt } from "../../src/live/claudeInvestigator";
 import { LiveCandidate } from "../../src/live/candidate";
 
 /**
@@ -77,5 +77,29 @@ describe("ClaudeInvestigator", () => {
     // Constructing without a runner must not throw or require ANTHROPIC_API_KEY --
     // the real SDK call only happens lazily inside investigate().
     expect(() => new ClaudeInvestigator()).not.toThrow();
+  });
+});
+
+describe("buildPrompt (validated rubric)", () => {
+  const candidate = {
+    market: {
+      marketTicker: "M", seriesTicker: "S", category: "C",
+      openTs: 0, closeTs: 0, liquidityVolume: 100, yesBidCents: 55, yesAskCents: 58,
+    },
+    direction: "yes", entryCents: 58, anomalyScore: 3.2,
+  } as unknown as LiveCandidate;
+
+  it("includes the 'separate the flagged signal' rubric", () => {
+    expect(buildPrompt(candidate)).toContain("Separate the FLAGGED signal from surrounding market activity");
+  });
+
+  it("includes the per-outcome highest-conviction rubric", () => {
+    expect(buildPrompt(candidate)).toContain("concentrating on the HIGHEST-CONVICTION outcomes");
+  });
+
+  it("uses the revised, direction-aware verdict definitions", () => {
+    const p = buildPrompt(candidate);
+    expect(p).toContain("EXPLAINED: a public catalyst specifically accounts for the flagged pattern");
+    expect(p).toContain("explains the volume but NOT the flagged direction/concentration");
   });
 });
