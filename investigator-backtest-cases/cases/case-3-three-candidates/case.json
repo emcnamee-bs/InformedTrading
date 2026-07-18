@@ -1,0 +1,7 @@
+{
+  "name": "Three candidates trading markets on their own elections (Rule 5.17(z))",
+  "cutoff_iso": "2026-01-15T00:00:00Z",
+  "anomaly": "Relationship screening flagged accounts trading in three separate small Kalshi election markets: in each, the account holder is a declared candidate in the very race the market references, holding directional positions on an outcome the holder participates in deciding. The three races are otherwise unrelated; the common pattern is decision-maker self-trading in thin single-race markets.",
+  "expected": "UNEXPLAINED",
+  "notes": "Labeled positive: three candidates were sanctioned for trading markets tied to their own elections in violation of Kalshi Exchange Rule 5.17(z) (source confidence medium-high; reported via Kalshi enforcement coverage). Like case 2, this was detected via the candidate-account relationship (name/identity matching), NOT a price anomaly; exact dates are not public, so the cutoff is approximate (set before the enforcement reporting became public). Included to map coverage of relationship-flagged cases."
+}

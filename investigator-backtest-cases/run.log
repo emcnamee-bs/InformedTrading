@@ -1,0 +1,28 @@
+[case-1-editor] run 1/2 ... UNEXPLAINED
+[case-1-editor] run 2/2 ... UNEXPLAINED
+[case-2-candidate] run 1/2 ... UNEXPLAINED
+[case-2-candidate] run 2/2 ... UNEXPLAINED
+[case-3-three-candidates] run 1/2 ... UNEXPLAINED
+[case-3-three-candidates] run 2/2 ... UNEXPLAINED
+[case-4-santos] run 1/2 ... UNEXPLAINED
+[case-4-santos] run 2/2 ... UNEXPLAINED
+[case-5-staffers] run 1/2 ... UNEXPLAINED
+[case-5-staffers] run 2/2 ... UNEXPLAINED
+[case-6-neg-newsmove] run 1/2 ... EXPLAINED
+[case-6-neg-newsmove] run 2/2 ... EXPLAINED
+[case-7-neg-consensus] run 1/2 ... EXPLAINED
+[case-7-neg-consensus] run 2/2 ... EXPLAINED
+[case-8-neg-datafeed] run 1/2 ... EXPLAINED
+[case-8-neg-datafeed] run 2/2 ... EXPLAINED
+
+=== DONE ===
+case-1-editor: {"UNEXPLAINED":2} (expected UNEXPLAINED)
+case-2-candidate: {"UNEXPLAINED":2} (expected UNEXPLAINED)
+case-3-three-candidates: {"UNEXPLAINED":2} (expected UNEXPLAINED)
+case-4-santos: {"UNEXPLAINED":2} (expected UNEXPLAINED)
+case-5-staffers: {"UNEXPLAINED":2} (expected UNEXPLAINED)
+case-6-neg-newsmove: {"EXPLAINED":2} (expected EXPLAINED)
+case-7-neg-consensus: {"EXPLAINED":2} (expected EXPLAINED)
+case-8-neg-datafeed: {"EXPLAINED":2} (expected EXPLAINED)
+Sensitivity (pos UNEXPLAINED): 10/10
+Specificity (neg EXPLAINED): 6/6 | false-pos: 0/6
