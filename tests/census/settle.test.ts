@@ -28,4 +28,14 @@ describe("runSettleCycle", () => {
     expect(db.listOpen()).toHaveLength(0);
     db.close();
   });
+  it("does not double-count matched when the same ticker appears twice in one batch", () => {
+    const db = new InsiderDb(tmpDb());
+    db.openBet(openBet("yes", "mentions|cusum+imbalance|medium|yes|b50|1d|med"));
+    const r = runSettleCycle([
+      { ticker: "KXT-26JUL30-A", result: "yes", settledAt: 9, source: "market-result" },
+      { ticker: "KXT-26JUL30-A", result: "yes", settledAt: 9, source: "market-result" },
+    ], db);
+    expect(r.matched).toBe(1);
+    db.close();
+  });
 });

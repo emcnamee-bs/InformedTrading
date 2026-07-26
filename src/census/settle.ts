@@ -4,9 +4,11 @@ export interface SettlementRecord { ticker: string; result: "yes" | "no"; settle
 
 export function runSettleCycle(settlements: SettlementRecord[], db: InsiderDb): { matched: number; settled: number } {
   let matched = 0, settled = 0;
-  const open = db.listOpen();
+  const processed = new Set<string>();
   for (const s of settlements) {
-    const sides = new Set(open.filter((o) => o.ticker === s.ticker).map((o) => o.side));
+    if (processed.has(s.ticker)) continue;
+    processed.add(s.ticker);
+    const sides = new Set(db.listOpen().filter((o) => o.ticker === s.ticker).map((o) => o.side));
     if (sides.size === 0) continue;
     matched++;
     for (const side of sides) {
