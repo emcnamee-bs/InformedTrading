@@ -52,4 +52,16 @@ describe("InsiderDb", () => {
     expect(c.n).toBe(1); expect(c.wins).toBe(0); expect(c.pnlCents).toBe(-1);
     db.close();
   });
+
+  it("settles one ticker/side spanning multiple cells: each cell folds independently and both open rows clear", () => {
+    const db = new InsiderDb(tmpDb());
+    db.openBet(bet({ cellKey: "entertainment|cusum+imbalance|medium|yes|b62|1d|med" }));
+    db.openBet(bet({ cellKey: "entertainment|cusum+imbalance|high|yes|b62|1d|med", sensitivity: "high" }));
+    db.settle("KXT-26JUL30-A", "yes", true, 3000, "market-result");
+    const cells = db.listCells();
+    expect(cells).toHaveLength(2);
+    for (const c of cells) expect(c.n).toBe(1);
+    expect(db.listOpen()).toHaveLength(0);
+    db.close();
+  });
 });

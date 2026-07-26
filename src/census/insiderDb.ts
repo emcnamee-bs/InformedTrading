@@ -65,9 +65,9 @@ export class InsiderDb {
     }));
   }
 
-  settle(ticker: string, side: string, won: boolean, settledAt: number, settleSource: string): void {
-    const rows = this.db.prepare(`SELECT * FROM insider_open WHERE ticker=? AND side=?`).all(ticker, side) as any[];
+  settle(ticker: string, side: "yes" | "no", won: boolean, settledAt: number, settleSource: string): void {
     const tx = this.db.transaction(() => {
+      const rows = this.db.prepare(`SELECT * FROM insider_open WHERE ticker=? AND side=?`).all(ticker, side) as any[];
       for (const r of rows) {
         const traded = Math.round(r.entry_price_cents * r.count);
         const pnl = (won ? Math.round(r.count * 100) : 0) - traded;
