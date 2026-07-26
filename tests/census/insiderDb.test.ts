@@ -64,4 +64,15 @@ describe("InsiderDb", () => {
     expect(db.listOpen()).toHaveLength(0);
     db.close();
   });
+
+  it("listRaw returns settled drill-down rows", () => {
+    const db = new InsiderDb(tmpDb());
+    db.openBet(bet());
+    db.settle("KXT-26JUL30-A", "yes", true, 3000, "market-result");
+    const raw = db.listRaw();
+    expect(raw).toHaveLength(1);
+    expect(raw[0]!.won).toBe(true);
+    expect(raw[0]!.settledAt).toBe(3000);
+    db.close();
+  });
 });

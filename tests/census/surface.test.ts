@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { retOnTraded, winRate, impliedFromBand, winRateVsImplied, marginal } from "../../src/census/surface";
 import { CellRow } from "../../src/census/insiderDb";
+import { isRipe, persistence } from "../../src/census/surface";
+import { RawRow } from "../../src/census/insiderDb";
 
 const cell = (o: Partial<CellRow> = {}): CellRow => ({
   cellKey: "k", category: "mentions", detector: "cusum+imbalance", sensitivity: "medium",
@@ -42,4 +44,27 @@ it("marginal collapses cells along one axis, aggregates, sorts by retOnTraded de
   expect(m[0]!.retOnTraded).toBeCloseTo(0.2);
   expect(m[1]!.value).toBe("politics");
   expect(m[1]!.retOnTraded).toBeCloseTo(-0.2);
+});
+
+const raw = (settledAt: number, won: boolean, pnl: number): RawRow => ({
+  ticker: "T", side: "yes", cellKey: "k", entryPriceCents: 50, count: 1 / 50,
+  won, pnlCents: pnl, anomalyScore: 2, settledAt, settleSource: "market-result",
+});
+
+it("isRipe requires retOnTraded >= minRet AND n >= minSample", () => {
+  expect(isRipe({ retOnTraded: 0.05, n: 600 })).toBe(true);
+  expect(isRipe({ retOnTraded: 0.05, n: 100 })).toBe(false);
+  expect(isRipe({ retOnTraded: 0.01, n: 600 })).toBe(false);
+});
+it("persistence requires positive ret in BOTH the recent and prior windows", () => {
+  const NOW = 1_000_000;
+  const rows = [
+    raw(NOW - 10 * 3600, true, 2),   // recent, win
+    raw(NOW - 100 * 3600, true, 2),  // prior, win
+  ];
+  const p = persistence(rows, NOW, 48 * 3600);
+  expect(p.recentN).toBe(1); expect(p.priorN).toBe(1); expect(p.persistent).toBe(true);
+  // a prior-window loss breaks persistence
+  const p2 = persistence([raw(NOW - 10 * 3600, true, 2), raw(NOW - 100 * 3600, false, -1)], NOW, 48 * 3600);
+  expect(p2.persistent).toBe(false);
 });
