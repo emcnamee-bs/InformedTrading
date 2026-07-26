@@ -13,4 +13,4 @@ COPY src ./src
 ENV AI1_DB=/app/state/spine.db
 ENV INSIDER_DB=/app/state/insider.db
 ENV CENSUS_INTERVAL_SECONDS=600
-CMD ["npx", "tsx", "src/census/runner.ts"]
+CMD ["node_modules/.bin/tsx", "src/census/runner.ts"]
