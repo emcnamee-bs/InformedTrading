@@ -271,6 +271,24 @@ export class HistoricalClient {
   }
 
   /**
+   * Minimal, read-only lookup of a single market's settlement result -- used by the local
+   * census hydrate step (src/census/hydrate.ts) to backfill `spine_settlement` for tickers
+   * that have resolved since the last hydrate pass. Returns null for anything not yet settled
+   * (or not found), never throws on a 404 so callers can poll opportunistically.
+   */
+  async getMarketResult(ticker: string): Promise<{ result: "yes" | "no" } | null> {
+    let body: any;
+    try {
+      body = await this.getJson(`/markets/${ticker}`, {});
+    } catch {
+      return null;
+    }
+    const m = body?.market;
+    if (!m || m.status !== "settled") return null;
+    return { result: m.result === "yes" ? "yes" : "no" };
+  }
+
+  /**
    * Maps each OPEN event's ticker to its Kalshi category (e.g. "Entertainment", "Mentions",
    * "Politics"). The /markets payload carries event_ticker but not category, so this is how
    * listOpenMarkets resolves a market's category for the --categories filter.
