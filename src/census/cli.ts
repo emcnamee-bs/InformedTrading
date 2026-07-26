@@ -1,18 +1,14 @@
 import { readFileSync, existsSync } from "node:fs";
-import { loadConfig } from "../config";
-import { HistoricalClient } from "../kalshi/historicalClient";
 import { SpineReader } from "./spine";
 import { InsiderDb } from "./insiderDb";
 import { runEntryCycle } from "./entry";
 import { runSettleCycle } from "./settle";
-import { hydrateSpine } from "./hydrate";
 
-const USAGE = "usage: npm run census -- [--spine <path>] [--insider <path>] [--hydrate]";
+const USAGE = "usage: npm run census -- [--spine <path>] [--insider <path>]";
 
 export interface CensusCliArgs {
   spinePath: string;
   insiderPath: string;
-  hydrate: boolean;
 }
 
 export function parseArgs(argv: string[]): CensusCliArgs {
@@ -23,7 +19,6 @@ export function parseArgs(argv: string[]): CensusCliArgs {
   return {
     spinePath: get("--spine") ?? "./.census/spine.db",
     insiderPath: get("--insider") ?? "./.census/insider.db",
-    hydrate: argv.includes("--hydrate"),
   };
 }
 
@@ -77,16 +72,8 @@ async function main() {
 
   const insiderDb = new InsiderDb(args.insiderPath);
 
-  if (args.hydrate) {
-    const cfg = loadConfig();
-    const client = new HistoricalClient(cfg);
-    console.error(`Hydrating spine.db at ${args.spinePath} from Kalshi (PAPER, read-only)...`);
-    const result = await hydrateSpine(client, args.spinePath, insiderDb, nowTs);
-    console.error(
-      `Hydrate complete: markets=${result.markets} candles=${result.candles} trades=${result.trades} settlements=${result.settlements}`,
-    );
-  }
-
+  // spine.db is populated by the production poller (Fast99Follower/agent), not this CLI --
+  // Phase 1's local `--hydrate` stand-in is retired now that the real poller schema is read directly.
   const reader = new SpineReader(args.spinePath);
   try {
     const entryFunnel = runEntryCycle(reader.listMarketData(), insiderDb, nowTs);
