@@ -21,18 +21,18 @@ export function runEntryCycle(markets: MarketData[], db: InsiderDb, nowTs: numbe
     if (!res) continue;
     f.fired++;
     const { candidate, features } = res;
+    if (candidate.entryCents <= 0 || candidate.entryCents >= 100) continue; // degenerate price, nothing to bet
     const minsToClose = Math.max(0, (m.closeTs - nowTs) / 60);
+    const detector = detectorLabel(features);
+    const entryBand = bandOf(candidate.entryCents);
+    const timeBucket = timeBucketOf(minsToClose);
+    const scoreBucket = scoreBucketOf(candidate.anomalyScore);
+    const key = cellKey({ category, detector, sensitivity: SENSITIVITY, direction: candidate.direction, entryBand, timeBucket, scoreBucket });
     const bet: OpenBet = {
       ticker: m.marketTicker, side: candidate.direction, entryPriceCents: candidate.entryCents,
-      count: candidate.entryCents > 0 ? 1 / candidate.entryCents : 0,
-      openedTs: nowTs, closeMs: m.closeTs * 1000,
-      category, detector: detectorLabel(features), sensitivity: SENSITIVITY, direction: candidate.direction,
-      entryBand: bandOf(candidate.entryCents), timeBucket: timeBucketOf(minsToClose),
-      scoreBucket: scoreBucketOf(candidate.anomalyScore), anomalyScore: candidate.anomalyScore,
-      cellKey: cellKey({
-        category, detector: detectorLabel(features), sensitivity: SENSITIVITY, direction: candidate.direction,
-        entryBand: bandOf(candidate.entryCents), timeBucket: timeBucketOf(minsToClose), scoreBucket: scoreBucketOf(candidate.anomalyScore),
-      }),
+      count: 1 / candidate.entryCents, openedTs: nowTs, closeMs: m.closeTs * 1000,
+      category, detector, sensitivity: SENSITIVITY, direction: candidate.direction,
+      entryBand, timeBucket, scoreBucket, anomalyScore: candidate.anomalyScore, cellKey: key,
     };
     if (db.openBet(bet)) f.entered++;
   }

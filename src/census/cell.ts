@@ -16,8 +16,10 @@ export function categoryOf(series: string): string {
 }
 
 export function bandOf(cents: number): string {
-  if (!Number.isFinite(cents) || cents <= 0 || cents >= 100) return "bNA";
-  return `b${Math.round(cents)}`;
+  if (!Number.isFinite(cents)) return "bNA";
+  const r = Math.round(cents);
+  if (r <= 0 || r >= 100) return "bNA";
+  return `b${r}`;
 }
 
 export function timeBucketOf(minsToClose: number): string {

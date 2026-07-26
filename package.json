@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "replay": "tsx src/replay/cli.ts",
     "probe": "tsx src/live/cli.ts",
-    "census": "tsx src/census/cli.ts"
+    "census": "tsx src/census/cli.ts",
+    "census:surface": "tsx src/census/surfaceCli.ts"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

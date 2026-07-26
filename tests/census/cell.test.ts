@@ -15,6 +15,11 @@ describe("cell bucketing", () => {
     expect(bandOf(0)).toBe("bNA");
     expect(bandOf(100)).toBe("bNA");
   });
+  it("bandOf rounds BEFORE the 0/100 exclusion (99.6 -> bNA, 0.4 -> bNA)", () => {
+    expect(bandOf(99.6)).toBe("bNA");
+    expect(bandOf(0.4)).toBe("bNA");
+    expect(bandOf(62.4)).toBe("b62");
+  });
   it("timeBucketOf slices minutes-to-close", () => {
     expect(timeBucketOf(20)).toBe("30m");
     expect(timeBucketOf(90)).toBe("2h");

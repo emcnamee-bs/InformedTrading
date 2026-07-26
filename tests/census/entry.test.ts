@@ -46,4 +46,13 @@ describe("runEntryCycle", () => {
     expect(runEntryCycle(markets, db, NOW).entered).toBe(0);
     db.close();
   });
+  it("does not enter a candidate whose entry price is <= 0", async () => {
+    const db = new InsiderDb(tmpDb());
+    const md = { market: { ...mkt("KXAOCMENTION-26JUL30-Z", "KXAOCMENTION"), yesBidCents: 100, yesAskCents: 100 }, ...surge("KXAOCMENTION-26JUL30-Z") };
+    // NO-direction entry would be 100 - yesBidCents = 0; YES entry would be yesAskCents=100 (also degenerate).
+    const f = runEntryCycle([md], db, NOW);
+    expect(f.entered).toBe(0);
+    expect(db.listOpen()).toHaveLength(0);
+    db.close();
+  });
 });

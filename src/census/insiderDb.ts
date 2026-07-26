@@ -13,6 +13,11 @@ export interface CellRow {
   n: number; wins: number; tradedCents: number; pnlCents: number;
 }
 
+export interface RawRow {
+  ticker: string; side: string; cellKey: string; entryPriceCents: number; count: number;
+  won: boolean; pnlCents: number; anomalyScore: number; settledAt: number; settleSource: string;
+}
+
 const MIGRATION = `
 CREATE TABLE IF NOT EXISTS insider_open (
   ticker TEXT NOT NULL, side TEXT NOT NULL, cell_key TEXT NOT NULL,
@@ -97,6 +102,14 @@ export class InsiderDb {
       cellKey: r.cell_key, category: r.category, detector: r.detector, sensitivity: r.sensitivity,
       direction: r.direction, entryBand: r.entry_band, timeBucket: r.time_bucket, scoreBucket: r.score_bucket,
       n: r.n, wins: r.wins, tradedCents: r.traded_cents, pnlCents: r.pnl_cents,
+    }));
+  }
+
+  listRaw(): RawRow[] {
+    return this.db.prepare(`SELECT * FROM insider_raw`).all().map((r: any) => ({
+      ticker: r.ticker, side: r.side, cellKey: r.cell_key, entryPriceCents: r.entry_price_cents,
+      count: r.count, won: r.won === 1, pnlCents: r.pnl_cents, anomalyScore: r.anomaly_score,
+      settledAt: r.settled_at, settleSource: r.settle_source,
     }));
   }
 
