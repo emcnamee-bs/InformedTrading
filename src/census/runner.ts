@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { SpineReader } from "./spine";
 import { InsiderDb } from "./insiderDb";
 import { runEntryCycle, EntryFunnel } from "./entry";
@@ -24,7 +23,8 @@ async function main(): Promise<void> {
   const spinePath = process.env.AI1_DB || "/app/state/spine.db";
   const insiderPath = process.env.INSIDER_DB || "/app/state/insider.db";
   const haltPath = process.env.HALT_FILE || "/app/state/HALT-CENSUS";
-  const intervalMs = (Number(process.env.CENSUS_INTERVAL_SECONDS) || 600) * 1000;
+  const raw = Number(process.env.CENSUS_INTERVAL_SECONDS);
+  const intervalMs = (Number.isFinite(raw) && raw > 0 ? raw : 600) * 1000;
   const db = new InsiderDb(insiderPath);
   let stop = false;
   process.on("SIGTERM", () => { stop = true; });
@@ -33,14 +33,15 @@ async function main(): Promise<void> {
     if (existsSync(haltPath)) { console.error("[census] HALT file present, pausing"); }
     else if (!existsSync(spinePath)) { console.error(`[census] spine not found at ${spinePath}, waiting`); }
     else {
-      const reader = new SpineReader(spinePath); // re-open each cycle to see fresh poller writes
+      let reader: SpineReader | null = null;
       try {
+        reader = new SpineReader(spinePath); // re-open each cycle to see fresh poller writes
         const nowTs = Math.floor(Date.now() / 1000);
         const r = runOnce(reader, db, nowTs);
         console.error(`[census] entry: analyzed=${r.entry.scanned} entered=${r.entry.entered} pastEvent=${r.entry.pastEvent} | settle: ${r.settle.settled}`);
       } catch (e) {
         console.error("[census] cycle error:", e instanceof Error ? e.message : String(e));
-      } finally { reader.close(); }
+      } finally { if (reader) reader.close(); }
     }
     const t = Date.now();
     while (!stop && Date.now() - t < intervalMs) await new Promise((r) => setTimeout(r, 500));
@@ -49,4 +50,4 @@ async function main(): Promise<void> {
   console.error("[census] stopped");
 }
 
-if (process.argv[1] && process.argv[1].endsWith("runner.ts")) main();
+if (process.argv[1] && process.argv[1].endsWith("runner.ts")) main().catch((e) => { console.error("[census] fatal:", e); process.exit(1); });
