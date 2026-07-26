@@ -22,3 +22,30 @@ export function winRateVsImplied(row: CellRow): number | null {
   const implied = impliedFromBand(row.entryBand);
   return implied === null ? null : winRate(row) - implied;
 }
+
+export type Dimension =
+  | "category" | "detector" | "sensitivity" | "direction" | "entryBand" | "timeBucket" | "scoreBucket";
+
+export interface MarginalRow {
+  dimension: Dimension; value: string;
+  n: number; wins: number; tradedCents: number; pnlCents: number;
+  retOnTraded: number; winRate: number;
+}
+
+/** Collapse the cell hypercube along ONE axis: group by cells[dim], sum n/wins/traded/pnl, then
+ *  compute retOnTraded/winRate per group. Sorted by retOnTraded descending (best edge first). */
+export function marginal(cells: CellRow[], dim: Dimension): MarginalRow[] {
+  const acc = new Map<string, { n: number; wins: number; tradedCents: number; pnlCents: number }>();
+  for (const c of cells) {
+    const value = c[dim];
+    const a = acc.get(value) ?? { n: 0, wins: 0, tradedCents: 0, pnlCents: 0 };
+    a.n += c.n; a.wins += c.wins; a.tradedCents += c.tradedCents; a.pnlCents += c.pnlCents;
+    acc.set(value, a);
+  }
+  return [...acc.entries()]
+    .map(([value, a]): MarginalRow => ({
+      dimension: dim, value, ...a,
+      retOnTraded: retOnTraded(a), winRate: winRate(a),
+    }))
+    .sort((x, y) => y.retOnTraded - x.retOnTraded);
+}
