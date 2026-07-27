@@ -1,0 +1,7 @@
+{
+  "name": "SOTU attendance market — George Santos (KXATTENDSOTU-GSAN)",
+  "cutoff_iso": "2026-02-24T22:00:00Z",
+  "anomaly": "In the Kalshi market KXATTENDSOTU-GSAN (\"Will George Santos attend the 2026 State of the Union?\"), surveillance flagged concentrated one-sided NO accumulation: trading tied to a single actor accounted for over 35% of the market's volume on the day before the address, within roughly $7.8M wagered across the event on Feb 24, while the YES price held in the 65-75c range. Daily volume in this single-name market jumped from a ~7k-27k contract baseline to ~183k (Feb 22-23 UTC) and ~176k (Feb 23-24 UTC) contracts. The concentrated position profits only if Santos does NOT attend, and the market's resolution is controlled by a single individual.",
+  "expected": "UNEXPLAINED",
+  "notes": "Labeled positive: Kalshi surveillance detected the concentrated position, froze the account, and referred the matter to the CFTC (CFTC investigation confirmed; profit/deception remain allegations). This is the one case in the suite that WAS caught primarily via a price/volume/concentration anomaly, and it has the best public odds chart: the dossier's price table is real candlestick data pulled from Kalshi's public historical API. Cutoff is set just before the pre-speech 'watching from an airport' post and price collapse."
+}

@@ -1,0 +1,24 @@
+[pos] run 1/10 ... UNEXPLAINED
+[pos] run 2/10 ... UNEXPLAINED
+[pos] run 3/10 ... UNEXPLAINED
+[pos] run 4/10 ... UNEXPLAINED
+[pos] run 5/10 ... UNEXPLAINED
+[pos] run 6/10 ... UNEXPLAINED
+[pos] run 7/10 ... UNEXPLAINED
+[pos] run 8/10 ... UNEXPLAINED
+[pos] run 9/10 ... UNEXPLAINED
+[pos] run 10/10 ... UNEXPLAINED
+[neg] run 1/10 ... EXPLAINED
+[neg] run 2/10 ... EXPLAINED
+[neg] run 3/10 ... EXPLAINED
+[neg] run 4/10 ... EXPLAINED
+[neg] run 5/10 ... EXPLAINED
+[neg] run 6/10 ... EXPLAINED
+[neg] run 7/10 ... EXPLAINED
+[neg] run 8/10 ... EXPLAINED
+[neg] run 9/10 ... EXPLAINED
+[neg] run 10/10 ... EXPLAINED
+
+=== DONE ===
+POSITIVE detection (UNEXPLAINED): 10/10 { UNEXPLAINED: [33m10[39m }
+NEGATIVE specificity (EXPLAINED): 10/10 { EXPLAINED: [33m10[39m }

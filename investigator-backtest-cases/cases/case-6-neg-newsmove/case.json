@@ -1,0 +1,7 @@
+{
+  "name": "NEGATIVE CONTROL — earnings market move that followed a public data release",
+  "cutoff_iso": "2026-04-24T15:30:00Z",
+  "anomaly": "A thin single-name Kalshi market ('Will Company X report Q1 revenue above $2.0B?') showed a sharp one-sided YES jump from ~30c to ~86c with a concentrated volume spike inside a ~90-minute window, well above the market's prior baseline.",
+  "expected": "EXPLAINED",
+  "notes": "NEGATIVE CONTROL (constructed test stimulus, not a real case). The flagged jump is a public-news-driven move: it began immediately AFTER Company X's scheduled, public quarterly earnings release, which beat the threshold. Correct verdict is EXPLAINED (the move FOLLOWED public information; low leakage). Purpose: verify the investigator does not over-flag a legitimate news-driven move as informed betting."
+}

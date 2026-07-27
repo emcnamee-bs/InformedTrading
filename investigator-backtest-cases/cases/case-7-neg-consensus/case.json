@@ -1,0 +1,7 @@
+{
+  "name": "NEGATIVE CONTROL — election market tracking a public polling consensus",
+  "cutoff_iso": "2026-06-15T00:00:00Z",
+  "anomaly": "A concentrated, one-sided position pushed a thin Kalshi market on a single local election to ~90% for one candidate over several days, with most volume on that side.",
+  "expected": "EXPLAINED",
+  "notes": "NEGATIVE CONTROL (constructed). The ~90% concentration matches a long-standing, widely-reported PUBLIC polling/forecast consensus; the position simply tracks public analysis, with no insider relationship and no contradiction of public statements. Correct verdict is EXPLAINED (superior/ordinary public analysis, not informed betting). Purpose: verify the investigator does not flag skilled trading on public information."
+}

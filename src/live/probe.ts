@@ -1,7 +1,8 @@
 import { LiveMarket, Candle, Trade } from "../kalshi/types";
 import { LiveCandidate, detectCandidate } from "./candidate";
 import { isViable, ViabilityParams, DEFAULT_VIABILITY } from "./viability";
-import { Investigator, Investigation, Verdict, keepUnexplained } from "./investigator";
+import { Investigator, Investigation, Verdict, keepCandidate } from "./investigator";
+import { isEventPast } from "./eventDate";
 import { OrderRequest } from "../kalshi/orderClient";
 
 // Hard safety caps for the live probe. These are NOT tuning knobs -- they bound real-money
@@ -25,8 +26,22 @@ export function sizeOrder(entryCents: number): { count: number; costCents: numbe
   return { count, costCents: count * entryCents };
 }
 
+/** min / median / max of a numeric array; zeros for an empty array. Median rounded to an int. */
+export function candleStats(counts: number[]): { min: number; median: number; max: number } {
+  if (counts.length === 0) return { min: 0, median: 0, max: 0 };
+  const sorted = [...counts].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0 ? Math.round((sorted[mid - 1]! + sorted[mid]!) / 2) : sorted[mid]!;
+  return { min: sorted[0]!, median, max: sorted[sorted.length - 1]! };
+}
+
 export interface ProbeDeps {
-  listOpenMarkets: (opts: { minVolume?: number; maxMarkets?: number }) => Promise<LiveMarket[]>;
+  listOpenMarkets: (opts: {
+    minVolume?: number;
+    maxMarkets?: number;
+    categories?: string[];
+  }) => Promise<LiveMarket[]>;
   getCandles: (
     seriesTicker: string,
     marketTicker: string,
@@ -44,6 +59,9 @@ export interface ProbeOpts {
   maxMarkets: number;
   period: 1 | 60 | 1440;
   maxBets: number;
+  // Optional Kalshi category filter (e.g. ["Entertainment","Social","Mentions"]). When set, only
+  // markets whose event is in one of these categories are scanned. Omit to scan all categories.
+  categories?: string[];
   viability?: ViabilityParams;
   // Individual viability overrides (operator-facing, e.g. via CLI flags) -- when provided,
   // each overrides only that one field of DEFAULT_VIABILITY (see buildViabilityParams below).
@@ -102,10 +120,17 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   const endTs = deps.nowTs;
   const viabilityParams = buildViabilityParams(opts);
 
-  const markets = await deps.listOpenMarkets({ minVolume: opts.minVolume, maxMarkets: opts.maxMarkets });
+  const markets = await deps.listOpenMarkets({
+    minVolume: opts.minVolume,
+    maxMarkets: opts.maxMarkets,
+    ...(opts.categories && opts.categories.length > 0 ? { categories: opts.categories } : {}),
+  });
 
   const kept: { candidate: LiveCandidate; investigation: Investigation }[] = [];
-  let skipped = 0;
+  let errors = 0;
+  let insufficientHistory = 0;
+  let pastEvent = 0;
+  const candleCounts: number[] = [];
 
   // Funnel diagnostics only -- these counters do not influence which candidates are kept
   // or how they're ranked/sized; they exist purely to log where candidates drop off.
@@ -119,6 +144,10 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
   // persistent 429 after retries) skips that one market and continues the scan rather than
   // aborting the whole plan via an unguarded Promise.all.
   for (const market of markets) {
+    if (isEventPast(market.marketTicker, deps.nowTs)) {
+      pastEvent++;
+      continue;
+    }
     try {
       // Never request candles/trades from before the market existed -- clamp per-market.
       const startTs = Math.max(endTs - lookbackSec, market.openTs);
@@ -126,6 +155,12 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
         deps.getCandles(market.seriesTicker, market.marketTicker, startTs, endTs, opts.period),
         deps.getTrades(market.marketTicker, startTs, endTs),
       ]);
+
+      candleCounts.push(candles.length);
+      if (candles.length < windowSize + baselineSize) {
+        insufficientHistory++;
+        continue;
+      }
 
       const candidate = detectCandidate(market, candles, trades, opts.windowSize, opts.baselineSize);
       if (!candidate) continue;
@@ -145,26 +180,32 @@ export async function planProbe(deps: ProbeDeps, opts: ProbeOpts): Promise<Probe
       console.error(
         `investigate ${candidate.market.marketTicker} dir=${candidate.direction} entry=${candidate.entryCents} -> ${investigation.verdict}`,
       );
-      if (!keepUnexplained(investigation)) continue;
+      if (!keepCandidate(investigation)) continue;
 
       kept.push({ candidate, investigation });
     } catch (err) {
-      skipped++;
+      errors++;
       console.error(`skip ${market.marketTicker}: ${err instanceof Error ? err.message : String(err)}`);
       continue;
     }
   }
 
-  console.error(`Probe scan summary: ${markets.length - skipped} scanned, ${skipped} skipped (of ${markets.length} total)`);
+  const analyzed = markets.length - pastEvent - errors - insufficientHistory;
+  console.error(
+    `Probe scan summary: ${analyzed} analyzed, ${pastEvent} past-event, ${insufficientHistory} insufficient-history, ${errors} errors (of ${markets.length} total)`,
+  );
 
   kept.sort((a, b) => b.candidate.anomalyScore - a.candidate.anomalyScore);
   const maxBets = Math.min(opts.maxBets ?? HARD_MAX_ORDERS, HARD_MAX_ORDERS);
   const top = kept.slice(0, maxBets);
 
+  const stats = candleStats(candleCounts);
   console.error(
-    `Funnel: scanned=${markets.length - skipped} skipped=${skipped} | anomalies=${anomaliesDetected} viable=${viableCount} investigated=${investigatedCount} | ` +
+    `Funnel: universe=${markets.length} | pastEvent=${pastEvent} errors=${errors} insufficientHistory=${insufficientHistory} analyzed=${analyzed} | ` +
+      `anomalies=${anomaliesDetected} viable=${viableCount} investigated=${investigatedCount} | ` +
       `verdicts EXPLAINED=${verdictCounts.EXPLAINED} UNEXPLAINED=${verdictCounts.UNEXPLAINED} AMBIGUOUS=${verdictCounts.AMBIGUOUS} | kept=${top.length}`,
   );
+  console.error(`candles/market: min=${stats.min} median=${stats.median} max=${stats.max}`);
   if (Object.keys(viabilityRejectReasons).length > 0) {
     const breakdown = Object.entries(viabilityRejectReasons)
       .map(([reason, count]) => `${reason}=${count}`)

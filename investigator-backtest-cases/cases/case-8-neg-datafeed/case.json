@@ -1,0 +1,7 @@
+{
+  "name": "NEGATIVE CONTROL — chart-ranking market tracking a public data feed",
+  "cutoff_iso": "2026-05-11T00:00:00Z",
+  "anomaly": "A Kalshi market ('Will Song X be #1 on next week's official streaming chart?') concentrated to ~92% YES with steady one-sided buying several days before the official chart's release.",
+  "expected": "EXPLAINED",
+  "notes": "NEGATIVE CONTROL (constructed). A widely-followed PUBLIC midweek chart tracker already published projections showing Song X #1 by a wide margin days before the official chart; the concentration reflects that public data feed, not private information. Correct verdict is EXPLAINED. Purpose: verify the investigator does not flag concentration that is grounded in an already-public data source (the same 'public precursor feed' pattern that made most real culture-market candidates explainable)."
+}

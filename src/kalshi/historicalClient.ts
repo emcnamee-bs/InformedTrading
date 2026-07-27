@@ -3,7 +3,10 @@ import { Candle, Trade, ResolvedMarket, LiveMarket, Side } from "./types";
 import { RateGovernor } from "./rateGovernor";
 import { dollarsToCents, parseFp, isoToUnix, seriesFromEvent, midCents } from "./parse";
 
-type FetchLike = (url: string) => Promise<{
+type FetchLike = (
+  url: string,
+  init?: { signal?: AbortSignal },
+) => Promise<{
   ok: boolean;
   status: number;
   json: () => Promise<any>;
@@ -32,6 +35,10 @@ export class HistoricalClient {
     private readonly fetchFn: FetchLike = fetch as unknown as FetchLike,
     private readonly sleepFn: SleepFn = realSleep,
     private readonly baseDelayMs = 500,
+    // Per-request wall-clock cap. A bare fetch never rejects when a socket is
+    // accepted but the server never responds (stale keep-alive), which hangs the
+    // whole sweep forever. Aborting turns that into a retryable error.
+    private readonly requestTimeoutMs = 20000,
   ) {
     this.gov = new RateGovernor(cfg.requestsPerSecond);
   }
@@ -60,12 +67,16 @@ export class HistoricalClient {
       await this.gov.acquire();
       const isLastAttempt = attempt >= this.maxRetries;
       let res: Awaited<ReturnType<FetchLike>>;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs);
       try {
-        res = await this.fetchFn(url);
+        res = await this.fetchFn(url, { signal: controller.signal });
       } catch (err) {
         if (isLastAttempt) throw err;
         await this.sleepFn(this.backoffDelayMs(attempt));
         continue;
+      } finally {
+        clearTimeout(timer);
       }
       if (res.ok) return res.json();
 
@@ -210,10 +221,19 @@ export class HistoricalClient {
     minVolume?: number;
     maxMarkets?: number;
     maxSpreadCents?: number;
+    categories?: string[];
   }): Promise<LiveMarket[]> {
     const minVolume = opts?.minVolume ?? 0;
     const maxMarkets = opts?.maxMarkets;
     const maxSpreadCents = opts?.maxSpreadCents ?? 20;
+    // Category filter (e.g. ["Entertainment","Mentions"]). Markets carry event_ticker but not a
+    // category, so when a filter is given we resolve each market's category via its event by
+    // building the open-event -> category map once up front. Matched case-insensitively.
+    const categorySet =
+      opts?.categories && opts.categories.length > 0
+        ? new Set(opts.categories.map((c) => c.toLowerCase()))
+        : undefined;
+    const eventCategories = categorySet ? await this.fetchEventCategories() : undefined;
     const markets: LiveMarket[] = [];
     let cursor: string | undefined;
     do {
@@ -224,13 +244,16 @@ export class HistoricalClient {
         cursor,
       });
       for (const m of body.markets ?? []) {
+        const eventCategory = eventCategories?.get(m.event_ticker ?? "");
+        if (categorySet && (!eventCategory || !categorySet.has(eventCategory.toLowerCase())))
+          continue;
         const seriesTicker = seriesFromEvent(m.event_ticker ?? "");
         const yesBidCents = dollarsToCents(m.yes_bid_dollars);
         const yesAskCents = dollarsToCents(m.yes_ask_dollars);
         const live: LiveMarket = {
           marketTicker: m.ticker,
           seriesTicker,
-          category: seriesTicker,
+          category: eventCategory ?? seriesTicker,
           openTs: isoToUnix(m.open_time),
           closeTs: isoToUnix(m.close_time),
           liquidityVolume: parseFp(m.volume_fp),
@@ -245,5 +268,23 @@ export class HistoricalClient {
       if (maxMarkets !== undefined && markets.length >= maxMarkets) break;
     } while (cursor);
     return maxMarkets !== undefined ? markets.slice(0, maxMarkets) : markets;
+  }
+
+  /**
+   * Maps each OPEN event's ticker to its Kalshi category (e.g. "Entertainment", "Mentions",
+   * "Politics"). The /markets payload carries event_ticker but not category, so this is how
+   * listOpenMarkets resolves a market's category for the --categories filter.
+   */
+  async fetchEventCategories(): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    let cursor: string | undefined;
+    do {
+      const body = await this.getJson("/events", { status: "open", limit: 200, cursor });
+      for (const e of body.events ?? []) {
+        if (e.event_ticker && e.category) map.set(e.event_ticker, e.category);
+      }
+      cursor = body.cursor || undefined;
+    } while (cursor);
+    return map;
   }
 }

@@ -31,13 +31,13 @@ export function anomalyScore(f: FeatureVector): number {
  * 100 - yesBidCents for NO. Returns null if no window is available or no
  * anomaly is detected.
  */
-export function detectCandidate(
+export function detectCandidateWithFeatures(
   market: LiveMarket,
   candles: Candle[],
   trades: Trade[],
   windowSize = 3,
   baselineSize = 5,
-): LiveCandidate | null {
+): { candidate: LiveCandidate; features: FeatureVector } | null {
   const slices = slidingWindows(candles, windowSize, baselineSize);
   if (slices.length === 0) return null;
   const slice = slices[slices.length - 1]!; // latest window, no lookahead
@@ -48,5 +48,15 @@ export function detectCandidate(
   const { isAnomaly, direction } = detectAnomaly(f);
   if (!isAnomaly || !direction) return null;
   const entryCents = direction === "yes" ? market.yesAskCents : 100 - market.yesBidCents;
-  return { market, direction, anomalyScore: anomalyScore(f), entryCents };
+  return { candidate: { market, direction, anomalyScore: anomalyScore(f), entryCents }, features: f };
+}
+
+export function detectCandidate(
+  market: LiveMarket,
+  candles: Candle[],
+  trades: Trade[],
+  windowSize = 3,
+  baselineSize = 5,
+): LiveCandidate | null {
+  return detectCandidateWithFeatures(market, candles, trades, windowSize, baselineSize)?.candidate ?? null;
 }

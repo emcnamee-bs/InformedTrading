@@ -1,0 +1,7 @@
+{
+  "name": "YouTube channel-metric markets — editor with near-perfect win rate",
+  "cutoff_iso": "2025-09-20T00:00:00Z",
+  "anomaly": "A single Kalshi account shows a near-perfect win rate across a narrow set of related low-odds event contracts tied to one major YouTube channel's content and video-performance metrics, repeatedly entering cheap YES positions shortly before the resolving videos were released and winning. Win-rate surveillance flagged the account's run as statistically anomalous for contracts priced at those odds. Public professional records identify the account holder as a video editor working for that same channel.",
+  "expected": "UNEXPLAINED",
+  "notes": "Labeled positive: confirmed by the CFTC's 2026-02-25 enforcement advisory (trader identified in press as a MrBeast editor; $20,397.58 in disgorgement+fine, 2-year suspension). Caught by a genuine statistical anomaly (near-perfect win rate on low-odds narrow markets) plus the structural information relationship. Closest case in the suite to a pure price/behavior detection. Platform caveat: CFTC describes it on KalshiEX; some press describes Polymarket bets; the transferable pattern is editor-with-advance-content-knowledge. Cutoff set before Kalshi's investigation/enforcement became public."
+}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { detectCandidate, anomalyScore } from "../../src/live/candidate";
+import { detectCandidateWithFeatures } from "../../src/live/candidate";
 import { LiveMarket, Candle, Trade } from "../../src/kalshi/types";
 
 const candle = (ts: number, close: number, vol: number, oi: number): Candle => ({
@@ -46,6 +47,30 @@ describe("detectCandidate", () => {
     };
     const candidate = detectCandidate(market, flat, [], 3, 5);
     expect(candidate).toBeNull();
+  });
+
+  it("detectCandidateWithFeatures returns the candidate AND its feature vector on a firing", () => {
+    // Reuse the same surge inputs the existing 'detects a surge' test uses in this file.
+    const flat = Array.from({ length: 8 }, (_, i) => candle(i, 50, 5, 100));
+    const surge = [
+      candle(8, 62, 80, 130),
+      candle(9, 74, 80, 160),
+      candle(10, 86, 80, 190),
+    ];
+    const candles = [...flat, ...surge];
+    const trades: Trade[] = surge.flatMap((c, i) => [
+      { tradeId: `t${i}a`, ticker: "M", yesPriceCents: c.price.close, count: 40, takerSide: "yes", createdTs: c.endPeriodTs },
+      { tradeId: `t${i}b`, ticker: "M", yesPriceCents: c.price.close, count: 40, takerSide: "yes", createdTs: c.endPeriodTs },
+    ]);
+    const market: LiveMarket = {
+      marketTicker: "M", seriesTicker: "S", category: "Politics",
+      openTs: 0, closeTs: 20, liquidityVolume: 5_000,
+      yesBidCents: 60, yesAskCents: 62,
+    };
+    const res = detectCandidateWithFeatures(market, candles, trades);
+    expect(res).not.toBeNull();
+    expect(res!.candidate.direction).toBe("yes");
+    expect(res!.features.cusumFired).toBe(true);
   });
 
   it("anomalyScore is a finite, non-negative combination of feature signals", () => {

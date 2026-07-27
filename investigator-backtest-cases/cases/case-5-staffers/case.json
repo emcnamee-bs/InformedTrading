@@ -1,0 +1,7 @@
+{
+  "name": "Campaign staffer trading a market on their own campaign's race (2026 cycle)",
+  "cutoff_iso": "2026-07-01T00:00:00Z",
+  "anomaly": "An account holds a concentrated one-sided position in a thin Kalshi market on a specific 2026 congressional race. The account holder's name matches a person listed as a paid staffer in FEC disbursement filings for one of the campaigns in that same race. The position was accumulated steadily over several weeks without corresponding public polling releases or race news, and is one-sided in favor of the staffer's own campaign's candidate.",
+  "expected": "UNEXPLAINED",
+  "notes": "Labeled positive (documented program, 2026): Kalshi actively cross-references campaign-staffer names from FEC filings against user logs and blocks matches from trading their campaign's markets — and at least one operative traded on a race despite the monitoring, showing the program is imperfect. Detection is via name-matching FEC records (a relationship signal), NOT a price anomaly; staffer cases are precisely the gap where price-based detection must carry the load. Included to map coverage. Cutoff set before the program's imperfections were publicly reported (NPR 2026-07-09)."
+}

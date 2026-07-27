@@ -1,0 +1,7 @@
+{
+  "name": "Candidate trading contracts on his own candidacy (May 2025)",
+  "cutoff_iso": "2025-05-20T00:00:00Z",
+  "anomaly": "An account holding positions in a thin Kalshi market tied to a specific election race belongs to a declared candidate in that same race. The candidate posted social-media videos publicly depicting/discussing his own trading of contracts tied to his candidacy. The position is in a market whose outcome the account holder can directly influence as a participant in the resolving event.",
+  "expected": "UNEXPLAINED",
+  "notes": "Labeled positive: confirmed by the CFTC's 2026-02-25 enforcement advisory ($2,246.36 disgorgement+fine, 5-year suspension; the trader admitted violating exchange rules). IMPORTANT: this case was detected via social-media videos (a relationship/public-evidence signal), NOT a price anomaly — Kalshi compliance contacted him the same day the videos surfaced. An explain-away investigator built for price anomalies may not naturally flag it; it is included to map coverage of relationship-flagged cases."
+}
